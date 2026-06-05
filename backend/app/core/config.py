@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     STORAGE_LOCAL_DIR: str = "./storage"
 
     # --- Bootstrap admin (Module 1 seed) ---
-    FIRST_ADMIN_EMAIL: str = "admin@digitalleap.local"
+    FIRST_ADMIN_EMAIL: str = "admin@digitalleap.com"
     FIRST_ADMIN_PASSWORD: str = "ChangeMe123!"
 
     @property

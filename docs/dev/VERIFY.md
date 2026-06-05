@@ -41,7 +41,7 @@ Run these in order the first time, then use 🔁 ones after each change.
 # Log in as the seeded admin (see backend\.env FIRST_ADMIN_EMAIL / FIRST_ADMIN_PASSWORD)
 $login = Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/auth/login `
   -ContentType application/json `
-  -Body (@{ email = "admin@digitalleap.local"; password = "ChangeMe123!" } | ConvertTo-Json)
+  -Body (@{ email = "admin@digitalleap.com"; password = "ChangeMe123!" } | ConvertTo-Json)
 $login.user            # ✅ shows your user + roles: ["admin"]
 $access = $login.access_token
 

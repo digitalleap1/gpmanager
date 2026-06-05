@@ -1,0 +1,27 @@
+# Local-dev image. Installs Python deps from pre-downloaded wheels (OFFLINE),
+# because this machine's Docker VM cannot reliably reach PyPI (files.pythonhosted.org
+# times out) while the Windows host network is fine.
+#
+# Regenerate the wheels on the host (start-local.ps1 does this automatically if
+# backend/wheels is empty):
+#   python -m pip download -r backend/requirements.txt --dest backend/wheels \
+#     --only-binary=:all: --platform manylinux_2_17_x86_64 --python-version 3.12 --implementation cp
+#
+# Production/Render uses the normal online ./backend/Dockerfile instead.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY requirements.txt requirements-dev.txt ./
+COPY wheels ./wheels
+RUN pip install --no-index --find-links=/app/wheels -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

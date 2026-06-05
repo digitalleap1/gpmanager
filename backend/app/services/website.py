@@ -1,5 +1,7 @@
 """Website Database logic (Module 6): CRUD, contacts, niche links, CSV import/export."""
 
+from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
+
 import csv
 import io
 import uuid

@@ -36,7 +36,9 @@ services:
         condition: service_healthy
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.local   # offline wheel install for local dev (Render uses the online Dockerfile)
     container_name: gpoms_backend
     restart: unless-stopped
     environment:
@@ -58,7 +60,7 @@ services:
     container_name: gpoms_frontend
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:8000/api"
+      NEXT_PUBLIC_API_URL: "http://localhost:${BACKEND_PORT:-8000}/api"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

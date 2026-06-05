@@ -2,6 +2,8 @@
 company; regular users only see projects they're assignee, team lead, or member of.
 """
 
+from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
+
 import uuid
 
 from sqlalchemy.orm import Session

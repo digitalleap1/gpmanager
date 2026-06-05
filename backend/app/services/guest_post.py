@@ -2,6 +2,8 @@
 bumps the project's monthly goal `achieved` count (Module 4 link).
 """
 
+from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
+
 import uuid
 from datetime import date, datetime, timezone
 
