@@ -1,0 +1,137 @@
+/**
+ * Minimal typed fetch wrapper around the GPOMS REST API.
+ *
+ * Behaviour added in Module 1:
+ *  - Injects `Authorization: Bearer <access>` when a token is stored.
+ *  - On a 401, attempts a single refresh via POST /auth/refresh, stores the
+ *    new tokens, and retries the original request once. If refresh fails the
+ *    tokens are cleared and the original error is rethrown.
+ */
+
+import {
+  clearTokens,
+  getAccessToken,
+  getRefreshToken,
+  setTokens,
+} from "./auth-tokens";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** Build headers, merging caller overrides and the bearer token (if any). */
+function buildHeaders(options: RequestInit): HeadersInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> | undefined),
+  };
+  const token = getAccessToken();
+  if (token && !("Authorization" in headers)) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+/**
+ * Exchange the stored refresh token for a fresh token pair.
+ * Returns the new access token, or null on failure (tokens are cleared).
+ * Deliberately does NOT route through `apiFetch` to avoid recursive refresh.
+ */
+async function refreshTokens(): Promise<string | null> {
+  const refresh_token = getRefreshToken();
+  if (!refresh_token) {
+    clearTokens();
+    return null;
+  }
+
+  const response = await fetch(`${API_URL}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token }),
+  });
+
+  if (!response.ok) {
+    clearTokens();
+    return null;
+  }
+
+  const data = (await response.json()) as {
+    access_token: string;
+    refresh_token: string;
+  };
+  setTokens(data.access_token, data.refresh_token);
+  return data.access_token;
+}
+
+interface FetchOptions extends RequestInit {
+  /** Internal flag: skip refresh/retry (used for the refresh call itself). */
+  _skipRefresh?: boolean;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: FetchOptions = {},
+): Promise<T> {
+  const { _skipRefresh, ...rest } = options;
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...rest,
+    headers: buildHeaders(rest),
+  });
+
+  // On 401, try a single refresh + retry — unless this is the refresh path,
+  // an explicitly opted-out call, or we have no refresh token to use.
+  if (
+    response.status === 401 &&
+    !_skipRefresh &&
+    path !== "/auth/refresh" &&
+    getRefreshToken()
+  ) {
+    const newAccess = await refreshTokens();
+    if (newAccess) {
+      const retryHeaders = {
+        ...buildHeaders(rest),
+        Authorization: `Bearer ${newAccess}`,
+      };
+      const retry = await fetch(`${API_URL}${path}`, {
+        ...rest,
+        headers: retryHeaders,
+      });
+      return handleResponse<T>(retry);
+    }
+  }
+
+  return handleResponse<T>(response);
+}
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as {
+      detail?: string;
+    };
+    throw new ApiError(response.status, body.detail ?? response.statusText);
+  }
+
+  // 204 No Content
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+export const api = {
+  get: <T>(path: string) => apiFetch<T>(path),
+  post: <T>(path: string, body: unknown) =>
+    apiFetch<T>(path, { method: "POST", body: JSON.stringify(body) }),
+  put: <T>(path: string, body: unknown) =>
+    apiFetch<T>(path, { method: "PUT", body: JSON.stringify(body) }),
+  patch: <T>(path: string, body: unknown) =>
+    apiFetch<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+  delete: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
+};

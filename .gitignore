@@ -1,0 +1,49 @@
+# ---------- Python / backend ----------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ---------- Node / frontend ----------
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+next-env.d.ts
+
+# ---------- Environment & secrets ----------
+.env
+.env.*
+!.env.example
+*.pem
+
+# ---------- Uploads / local storage ----------
+backend/storage/
+backend/uploads/
+
+# ---------- Editor / OS ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---------- Docker ----------
+docker-compose.override.yml
+
+# ---------- Local personal notes (keep out of the repo) ----------
+/Readme.txt
+/notes.txt
+/scratch.md
