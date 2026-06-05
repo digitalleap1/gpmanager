@@ -230,3 +230,92 @@ export interface BudgetUsagePoint {
   budget: number;
   spent: number;
 }
+
+/* ------------------------------------------------------------------ *
+ * Module 5 (Guest Post Tracker) types
+ * ------------------------------------------------------------------ */
+
+export type GuestPostStatus =
+  | "prospect"
+  | "contacted"
+  | "negotiating"
+  | "accepted"
+  | "invoice_sent"
+  | "paid"
+  | "published"
+  | "rejected";
+
+export interface GuestPostListItem {
+  id: string;
+  project_id: string;
+  project_name: string;
+  website_id: string | null;
+  website_name: string | null;
+  da: number | null;
+  dr: number | null;
+  traffic: number | null;
+  price: number | null;
+  contact_email: string | null;
+  assigned_user: UserRef | null;
+  status: string;
+  outreach_date: string | null;
+  live_link_date: string | null;
+  live_link: string | null;
+  anchor_text: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StatusHistoryEntry {
+  from_status: string | null;
+  to_status: string;
+  changed_by: UserRef | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface GuestPostDetail extends GuestPostListItem {
+  notes: string | null;
+  status_history: StatusHistoryEntry[];
+}
+
+/** Body for `POST /guest-posts`. Dates are `YYYY-MM-DD`. */
+export interface GuestPostCreate {
+  project_id: string;
+  website_id?: string | null;
+  website_name?: string | null;
+  da?: number | null;
+  dr?: number | null;
+  traffic?: number | null;
+  price?: number | null;
+  contact_email?: string | null;
+  assigned_user_id?: string | null;
+  status?: string;
+  outreach_date?: string | null;
+  live_link_date?: string | null;
+  live_link?: string | null;
+  anchor_text?: string | null;
+  notes?: string | null;
+}
+
+/** Partial body for `PATCH /guest-posts/{id}`. */
+export type GuestPostUpdate = Partial<GuestPostCreate>;
+
+/** Body for `POST /guest-posts/{id}/publish`. */
+export interface GuestPostPublish {
+  live_link: string;
+  live_link_date?: string | null;
+  anchor_text?: string | null;
+}
+
+/** Filter/query params accepted by `GET /guest-posts`. */
+export interface GuestPostListParams {
+  page?: number;
+  page_size?: number;
+  project_id?: string;
+  status?: string;
+  assigned_user_id?: string;
+  website_id?: string;
+  search?: string;
+  sort?: string;
+}

@@ -1,0 +1,41 @@
+# Render Blueprint for the GPOMS backend API.
+# Create the service: Render Dashboard -> New -> Blueprint -> pick this repo.
+# Set the `sync: false` env vars in the dashboard after the first apply.
+#
+# The database is Neon (external managed Postgres) per the project plan — paste
+# its pooled connection string into DATABASE_URL (use the postgresql+psycopg://
+# scheme). You can alternatively uncomment the `databases:` block to let Render
+# provision Postgres instead of Neon.
+
+services:
+  - type: web
+    name: gpoms-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health
+    # Runs before each deploy so the schema is migrated on release.
+    # (If your instance type doesn't support preDeploy, run it from the Render
+    #  Shell instead: `alembic upgrade head`.)
+    preDeployCommand: alembic upgrade head
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false # Neon connection string: postgresql+psycopg://USER:PASS@HOST/DB?sslmode=require
+      - key: BACKEND_CORS_ORIGINS
+        sync: false # your Vercel URL, e.g. https://gpmanager.vercel.app
+      - key: FIRST_ADMIN_EMAIL
+        sync: false
+      - key: FIRST_ADMIN_PASSWORD
+        sync: false
+
+# databases:
+#   - name: gpoms-db
+#     plan: free
+#     databaseName: gpoms
+#     user: gpoms

@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.activity import ActivityLog
+from app.models.guest_post import GuestPost
 from app.models.project import Project, ProjectMonthlyBudget, ProjectMonthlyGoal
 from app.models.user import User
 from app.repositories.activity import ActivityRepository
@@ -83,6 +84,14 @@ class DashboardService:
             )
             or 0
         )
+        live_links = (
+            self.db.scalar(
+                select(func.count())
+                .select_from(GuestPost)
+                .where(GuestPost.company_id == cid, GuestPost.status == "published")
+            )
+            or 0
+        )
 
         return DashboardSummary(
             total_projects=self._count_projects(),
@@ -91,7 +100,7 @@ class DashboardService:
             on_hold_projects=self._count_projects("hold"),
             cancelled_projects=self._count_projects("cancelled"),
             total_target_links=int(total_target),
-            total_live_links=0,
+            total_live_links=int(live_links),
             pending_payments_count=0,
             pending_payments_amount=0.0,
             monthly_budget_total=float(budget_total),

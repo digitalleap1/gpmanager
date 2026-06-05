@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  FileText,
   FolderKanban,
   LayoutDashboard,
   LogOut,
@@ -24,6 +25,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/guest-posts", label: "Guest Posts", icon: FileText },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ];
 

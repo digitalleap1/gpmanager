@@ -34,7 +34,11 @@ from app.models.project import (  # noqa: F401
 # Module 11 — Activity logs
 from app.models.activity import ActivityLog  # noqa: F401
 # Module 5 — Guest Posts
-# from app.models.guest_post import GuestPost  # noqa: F401
+from app.models.guest_post import (  # noqa: F401
+    GuestPost,
+    GuestPostStatusHistory,
+    OutreachMessage,
+)
 # Module 6 — Website Database
 # from app.models.website import Website  # noqa: F401
 # Module 7 — Payments

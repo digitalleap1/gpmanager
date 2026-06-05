@@ -116,6 +116,25 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/projects?page=1&page_size=5" -
 
 ---
 
+## G. Step 3 — Guest Post Tracker (Module 5) + publish automation
+
+| # | Menu | Command | ✅ Verify |
+|---|------|---------|-----------|
+| G1 | **5** | `alembic upgrade head` | Applies `0003`; new tables `guest_posts`, `guest_post_status_history`, `outreach_messages`. |
+| G2 | **8** 🔁 | `pytest -q` | Still green (mapper test now covers guest-post models). |
+| G3 | — | open `/guest-posts` | List renders; **New Guest Post** button; filters by project/status/assignee + search. |
+| G4 | — | create a guest post (pick a project, set status = prospect) | It appears in the table. |
+| G5 | — | open it → move status `prospect → … → published` (or use **Mark published** + a live link) | The status-history timeline updates with each transition. |
+| G6 | — | open that project's detail | The matching month's goal **`achieved` is incremented by 1** — the publish automation fired. |
+| G7 | — | back to `/dashboard` | **Total Live Links** > 0; the monthly-links chart shows the achieved bar; Recent Activity shows the "published" entry. |
+
+## H. CI / Deployment
+
+- **CI:** every push/PR to `main` runs [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) — backend (ruff + `alembic upgrade head` against a real Postgres service + pytest) and frontend (lint + build). Check the **Actions** tab on GitHub.
+- **Deploy:** follow [docs/deployment/DEPLOY.md](../deployment/DEPLOY.md) — Neon (DB) + Render (`render.yaml`, API) + Vercel (frontend, root dir `frontend`). Render & Vercel auto-deploy on push once connected. **Change `SECRET_KEY` + `FIRST_ADMIN_PASSWORD` before going live.**
+
+---
+
 ## Service URLs
 
 | Service | URL | Credentials |
