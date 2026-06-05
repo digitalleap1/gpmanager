@@ -103,6 +103,12 @@ export interface CountryRef {
   name: string;
 }
 
+export interface LanguageRef {
+  id: number;
+  iso_code: string;
+  name: string;
+}
+
 export interface UserSummary {
   id: string;
   full_name: string;
@@ -317,5 +323,107 @@ export interface GuestPostListParams {
   assigned_user_id?: string;
   website_id?: string;
   search?: string;
+  sort?: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Module 6 (Website Database) types
+ * ------------------------------------------------------------------ */
+
+export interface WebsiteContact {
+  id: string;
+  name: string | null;
+  email: string | null;
+  role: string | null;
+  is_primary: boolean;
+}
+
+export interface WebsiteMetric {
+  captured_on: string;
+  da: number | null;
+  dr: number | null;
+  traffic: number | null;
+  spam_score: number | null;
+}
+
+export interface WebsiteListItem {
+  id: string;
+  domain: string;
+  name: string | null;
+  main_niche: NicheRef | null;
+  country: CountryRef | null;
+  language: LanguageRef | null;
+  traffic: number | null;
+  da: number | null;
+  dr: number | null;
+  spam_score: number | null;
+  price: number | null;
+  email: string | null;
+  contact_person: string | null;
+  guest_post_available: boolean;
+  link_insertion_available: boolean;
+  homepage_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebsiteDetail extends WebsiteListItem {
+  notes: string | null;
+  niche_ids: number[];
+  contacts: WebsiteContact[];
+  metrics_history: WebsiteMetric[];
+}
+
+/** Body for `POST /websites`. */
+export interface WebsiteCreate {
+  domain: string;
+  name?: string | null;
+  main_niche_id?: number | null;
+  country_id?: number | null;
+  language_id?: number | null;
+  traffic?: number | null;
+  da?: number | null;
+  dr?: number | null;
+  spam_score?: number | null;
+  price?: number | null;
+  email?: string | null;
+  contact_person?: string | null;
+  guest_post_available?: boolean;
+  link_insertion_available?: boolean;
+  homepage_url?: string | null;
+  notes?: string | null;
+  niche_ids?: number[];
+}
+
+/** Partial body for `PATCH /websites/{id}`. */
+export type WebsiteUpdate = Partial<WebsiteCreate>;
+
+/** Body for `POST /websites/{id}/contacts`. */
+export interface WebsiteContactCreate {
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  is_primary?: boolean;
+}
+
+/** Result envelope returned by `POST /websites/import`. */
+export interface WebsiteImportResult {
+  created: number;
+  updated: number;
+  errors: { row: number; message: string }[];
+}
+
+/** Filter/query params accepted by `GET /websites` (and `/websites/export`). */
+export interface WebsiteListParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  country_id?: number;
+  niche_id?: number;
+  min_dr?: number;
+  max_dr?: number;
+  min_traffic?: number;
+  max_price?: number;
+  guest_post_available?: boolean;
   sort?: string;
 }

@@ -3,6 +3,7 @@
 import {
   FileText,
   FolderKanban,
+  Globe,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -26,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/guest-posts", label: "Guest Posts", icon: FileText },
+  { href: "/websites", label: "Websites", icon: Globe },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ];
 

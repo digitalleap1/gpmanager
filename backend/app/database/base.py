@@ -40,7 +40,12 @@ from app.models.guest_post import (  # noqa: F401
     OutreachMessage,
 )
 # Module 6 — Website Database
-# from app.models.website import Website  # noqa: F401
+from app.models.website import (  # noqa: F401
+    Website,
+    WebsiteContact,
+    WebsiteMetricsHistory,
+    website_niches,
+)
 # Module 7 — Payments
 # from app.models.payment import Payment  # noqa: F401
 # Module 8 — Tasks

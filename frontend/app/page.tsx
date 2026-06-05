@@ -6,7 +6,7 @@ const MODULES: { n: number; name: string; status: "planned" | "scaffolded" }[] =
   { n: 3, name: "Project Management", status: "scaffolded" },
   { n: 4, name: "Goal Tracking", status: "scaffolded" },
   { n: 5, name: "Guest Post Tracker", status: "scaffolded" },
-  { n: 6, name: "Website Database", status: "planned" },
+  { n: 6, name: "Website Database", status: "scaffolded" },
   { n: 7, name: "Payment Management", status: "planned" },
   { n: 8, name: "Task Management", status: "planned" },
   { n: 9, name: "Notifications", status: "planned" },

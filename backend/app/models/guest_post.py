@@ -34,8 +34,9 @@ class GuestPost(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # FK to websites is added in Module 6 (the table doesn't exist yet).
-    website_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    website_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("websites.id", ondelete="SET NULL")
+    )
     website_name: Mapped[str | None] = mapped_column(String(180))
     da: Mapped[int | None] = mapped_column(SmallInteger)
     dr: Mapped[int | None] = mapped_column(SmallInteger)

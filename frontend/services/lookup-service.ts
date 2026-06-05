@@ -7,7 +7,12 @@
  */
 
 import { api, ApiError } from "@/lib/api";
-import type { CountryRef, NicheRef, UserSummary } from "@/lib/types";
+import type {
+  CountryRef,
+  LanguageRef,
+  NicheRef,
+  UserSummary,
+} from "@/lib/types";
 
 export function getCountries(): Promise<CountryRef[]> {
   return api.get<CountryRef[]>("/lookups/countries");
@@ -15,6 +20,10 @@ export function getCountries(): Promise<CountryRef[]> {
 
 export function getNiches(): Promise<NicheRef[]> {
   return api.get<NicheRef[]>("/lookups/niches");
+}
+
+export function getLanguages(): Promise<LanguageRef[]> {
+  return api.get<LanguageRef[]>("/lookups/languages");
 }
 
 export async function getUsers(): Promise<UserSummary[]> {

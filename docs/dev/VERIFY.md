@@ -128,6 +128,18 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/projects?page=1&page_size=5" -
 | G6 | — | open that project's detail | The matching month's goal **`achieved` is incremented by 1** — the publish automation fired. |
 | G7 | — | back to `/dashboard` | **Total Live Links** > 0; the monthly-links chart shows the achieved bar; Recent Activity shows the "published" entry. |
 
+## I. Step 4 — Website Database (Module 6)
+
+| # | Menu | Command | ✅ Verify |
+|---|------|---------|-----------|
+| I1 | **5** | `alembic upgrade head` | Applies `0004`; new tables `websites`, `website_contacts`, `website_niches`, `website_metrics_history`; `guest_posts.website_id` is now a FK → `websites`. |
+| I2 | **8** 🔁 | `pytest -q` | Green (mapper test covers the website models). |
+| I3 | — | open `/websites` | List + filters (country, niche, DR min/max, min traffic, max price, GP-available) + search; **New Website** button. |
+| I4 | — | create a website | Appears in the table. |
+| I5 | — | **Export CSV** | Downloads `websites.csv` containing your rows (honors active filters). |
+| I6 | — | **Import CSV** (edit the export, add/change a row, re-import) | Shows "X created, Y updated, Z errors"; changes appear after refresh. Bad rows are reported by row number; good rows still import. |
+| I7 | — | open a website | Contacts add/remove works; metrics-history table renders. |
+
 ## H. CI / Deployment
 
 - **CI:** every push/PR to `main` runs [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) — backend (ruff + `alembic upgrade head` against a real Postgres service + pytest) and frontend (lint + build). Check the **Actions** tab on GitHub.
