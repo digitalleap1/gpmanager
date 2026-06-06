@@ -15,6 +15,7 @@ from app.models.guest_post import GuestPost
 from app.models.project import Project, ProjectMonthlyBudget, ProjectMonthlyGoal
 from app.models.user import User
 from app.repositories.activity import ActivityRepository
+from app.repositories.payment import PaymentRepository
 from app.schemas.dashboard import (
     ActivityRead,
     ChartBudgetPoint,
@@ -93,6 +94,8 @@ class DashboardService:
             or 0
         )
 
+        pending_count, pending_amount = PaymentRepository(self.db).pending_summary(cid)
+
         return DashboardSummary(
             total_projects=self._count_projects(),
             active_projects=self._count_projects("active"),
@@ -101,8 +104,8 @@ class DashboardService:
             cancelled_projects=self._count_projects("cancelled"),
             total_target_links=int(total_target),
             total_live_links=int(live_links),
-            pending_payments_count=0,
-            pending_payments_amount=0.0,
+            pending_payments_count=pending_count,
+            pending_payments_amount=pending_amount,
             monthly_budget_total=float(budget_total),
             monthly_spent_total=float(spent_total),
             team_members=int(team_members),

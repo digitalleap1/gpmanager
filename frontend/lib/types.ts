@@ -413,6 +413,71 @@ export interface WebsiteImportResult {
   errors: { row: number; message: string }[];
 }
 
+/* ------------------------------------------------------------------ *
+ * Module 7 (Payment Management) types
+ * ------------------------------------------------------------------ */
+
+export type PaymentStatus = "pending" | "approved" | "paid" | "failed";
+
+export interface PaymentListItem {
+  id: string;
+  project_id: string | null;
+  project_name: string | null;
+  website_id: string | null;
+  website_domain: string | null;
+  live_link: string | null;
+  amount_usd: number | null;
+  amount_inr: number | null;
+  invoice_link: string | null;
+  payment_date: string | null;
+  transaction_id: string | null;
+  remarks: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaymentStatusHistoryEntry {
+  from_status: string | null;
+  to_status: string;
+  changed_by: UserRef | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface PaymentDetail extends PaymentListItem {
+  status_history: PaymentStatusHistoryEntry[];
+}
+
+/** Body for `POST /payments`. Dates are `YYYY-MM-DD`. */
+export interface PaymentCreate {
+  project_id?: string | null;
+  website_id?: string | null;
+  live_link?: string | null;
+  amount_usd?: number | null;
+  amount_inr?: number | null;
+  invoice_link?: string | null;
+  payment_date?: string | null;
+  transaction_id?: string | null;
+  remarks?: string | null;
+  status?: string;
+}
+
+/** Partial body for `PATCH /payments/{id}`. */
+export type PaymentUpdate = Partial<PaymentCreate>;
+
+/** Filter/query params accepted by `GET /payments`. */
+export interface PaymentListParams {
+  page?: number;
+  page_size?: number;
+  project_id?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+  search?: string;
+  sort?: string;
+}
+
 /** Filter/query params accepted by `GET /websites` (and `/websites/export`). */
 export interface WebsiteListParams {
   page?: number;

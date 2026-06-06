@@ -47,7 +47,7 @@ from app.models.website import (  # noqa: F401
     website_niches,
 )
 # Module 7 — Payments
-# from app.models.payment import Payment  # noqa: F401
+from app.models.payment import Payment, PaymentStatusHistory  # noqa: F401
 # Module 8 — Tasks
 # from app.models.task import Task  # noqa: F401
 # Module 9 — Notifications

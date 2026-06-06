@@ -8,6 +8,7 @@ from app.routes.auth import router as auth_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.guest_posts import router as guest_posts_router
 from app.routes.lookups import router as lookups_router
+from app.routes.payments import router as payments_router
 from app.routes.projects import router as projects_router
 from app.routes.users import router as users_router
 from app.routes.websites import router as websites_router
@@ -29,6 +30,7 @@ api_router.include_router(lookups_router, prefix="/lookups", tags=["lookups"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(guest_posts_router, prefix="/guest-posts", tags=["guest-posts"])
 api_router.include_router(websites_router, prefix="/websites", tags=["websites"])
+api_router.include_router(payments_router, prefix="/payments", tags=["payments"])
 # from app.routes.guest_posts import router as guest_posts_router
 # from app.routes.websites import router as websites_router
 # from app.routes.payments import router as payments_router
