@@ -574,3 +574,41 @@ export interface NotificationListParams {
   page?: number;
   page_size?: number;
 }
+
+/* ------------------------------------------------------------------ *
+ * Module 10 (Reports & Exports) types
+ * ------------------------------------------------------------------ */
+
+/** Report path segment / discriminator. */
+export type ReportType = "project" | "team" | "financial" | "guest-post";
+
+/** A single column descriptor in a generic report. */
+export interface ReportColumn {
+  key: string;
+  label: string;
+}
+
+/**
+ * Generic report payload. The UI renders any report purely from `columns` +
+ * `rows`, with an optional bold totals row keyed the same way as the columns.
+ */
+export interface ReportResult {
+  report_type: string;
+  columns: ReportColumn[];
+  rows: Record<string, string | number | null>[];
+  totals: Record<string, string | number | null> | null;
+}
+
+/**
+ * Filters accepted by the reports endpoints. Not every filter applies to every
+ * report — only the set ones are sent and the backend ignores irrelevant ones.
+ * `status` is mainly for the guest-post report.
+ */
+export interface ReportFilters {
+  date_from?: string;
+  date_to?: string;
+  project_id?: string;
+  team_lead_id?: string;
+  country_id?: number;
+  status?: string;
+}

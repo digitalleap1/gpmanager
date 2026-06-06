@@ -3,6 +3,7 @@
 import {
   CheckSquare,
   CreditCard,
+  FileBarChart,
   FileText,
   FolderKanban,
   Globe,
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/websites", label: "Websites", icon: Globe },
   { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ];
 

@@ -1,16 +1,16 @@
 import Link from "next/link";
 
-const MODULES: { n: number; name: string; status: "planned" | "scaffolded" }[] = [
+const MODULES: { n: number; name: string; status: "scaffolded" | "scaffolded" }[] = [
   { n: 1, name: "Authentication & Roles", status: "scaffolded" },
   { n: 2, name: "Dashboard", status: "scaffolded" },
   { n: 3, name: "Project Management", status: "scaffolded" },
   { n: 4, name: "Goal Tracking", status: "scaffolded" },
   { n: 5, name: "Guest Post Tracker", status: "scaffolded" },
   { n: 6, name: "Website Database", status: "scaffolded" },
-  { n: 7, name: "Payment Management", status: "planned" },
-  { n: 8, name: "Task Management", status: "planned" },
-  { n: 9, name: "Notifications", status: "planned" },
-  { n: 10, name: "Reports & Exports", status: "planned" },
+  { n: 7, name: "Payment Management", status: "scaffolded" },
+  { n: 8, name: "Task Management", status: "scaffolded" },
+  { n: 9, name: "Notifications", status: "scaffolded" },
+  { n: 10, name: "Reports & Exports", status: "scaffolded" },
   { n: 11, name: "Activity Logs", status: "scaffolded" },
 ];
 
