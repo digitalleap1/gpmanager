@@ -492,3 +492,63 @@ export interface WebsiteListParams {
   guest_post_available?: boolean;
   sort?: string;
 }
+
+/* ------------------------------------------------------------------ *
+ * Module 8 (Task Management) types
+ * ------------------------------------------------------------------ */
+
+export type TaskStatus = "pending" | "in_progress" | "completed" | "overdue";
+export type TaskPriority = "low" | "medium" | "high";
+
+export interface TaskListItem {
+  id: string;
+  project_id: string | null;
+  project_name: string | null;
+  name: string;
+  description: string | null;
+  assigned_to: UserRef | null;
+  priority: string;
+  status: string;
+  due_date: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskComment {
+  id: string;
+  author: UserRef | null;
+  body: string;
+  created_at: string;
+}
+
+export interface TaskDetail extends TaskListItem {
+  comments: TaskComment[];
+}
+
+/** Body for `POST /tasks`. Dates are `YYYY-MM-DD`. */
+export interface TaskCreate {
+  project_id?: string | null;
+  name: string;
+  description?: string | null;
+  assigned_to?: string | null;
+  priority?: string;
+  due_date?: string | null;
+  status?: string;
+}
+
+/** Partial body for `PATCH /tasks/{id}`. */
+export type TaskUpdate = Partial<TaskCreate>;
+
+/** Filter/query params accepted by `GET /tasks`. */
+export interface TaskListParams {
+  page?: number;
+  page_size?: number;
+  project_id?: string;
+  status?: string;
+  priority?: string;
+  assigned_to?: string;
+  due_before?: string;
+  search?: string;
+  sort?: string;
+}

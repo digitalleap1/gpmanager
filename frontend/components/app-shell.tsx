@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CheckSquare,
   CreditCard,
   FileText,
   FolderKanban,
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/guest-posts", label: "Guest Posts", icon: FileText },
   { href: "/websites", label: "Websites", icon: Globe },
   { href: "/payments", label: "Payments", icon: CreditCard },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ];
 
