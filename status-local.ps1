@@ -10,13 +10,7 @@ if (Test-Path "$Root\.env") {
   }
 }
 
-Write-Host "============== GPOMS status ==============" -ForegroundColor Cyan
-$ver = docker version --format "{{.Server.Version}}" 2>$null
-if ($ver) { Write-Host "  Docker engine : $ver" -ForegroundColor Green }
-else { Write-Host "  Docker        : NOT running (open Docker Desktop)" -ForegroundColor Red }
-
-Write-Host "  Containers:"
-docker compose ps --format "    {{.Service}}: {{.State}} ({{.Status}})"
+Write-Host "============== GPOMS status (native local run) ==============" -ForegroundColor Cyan
 
 function Check($name, $url) {
   try { $r = Invoke-WebRequest $url -TimeoutSec 4 -UseBasicParsing
