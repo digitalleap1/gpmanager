@@ -112,12 +112,30 @@ export async function apiFetch<T>(
   return handleResponse<T>(response);
 }
 
+/** Turn a FastAPI error body's `detail` (string OR validation-error array) into
+ * a readable message. */
+function extractErrorMessage(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((e) =>
+        e && typeof e === "object" && "msg" in e
+          ? String((e as { msg: unknown }).msg)
+          : null,
+      )
+      .filter((m): m is string => Boolean(m));
+    if (msgs.length) return msgs.join("; ");
+  }
+  return fallback;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as {
-      detail?: string;
-    };
-    throw new ApiError(response.status, body.detail ?? response.statusText);
+    const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
+    throw new ApiError(
+      response.status,
+      extractErrorMessage(body.detail, response.statusText),
+    );
   }
 
   // 204 No Content
