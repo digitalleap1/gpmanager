@@ -11,7 +11,7 @@ import io
 import uuid
 from datetime import date
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Date, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import PermissionDenied
@@ -56,9 +56,9 @@ class ReportService:
         if country_id:
             stmt = stmt.where(Project.target_country_id == country_id)
         if date_from:
-            stmt = stmt.where(func.date(Project.created_at) >= date_from)
+            stmt = stmt.where(cast(Project.created_at, Date) >= date_from)
         if date_to:
-            stmt = stmt.where(func.date(Project.created_at) <= date_to)
+            stmt = stmt.where(cast(Project.created_at, Date) <= date_to)
         projects = self.db.scalars(stmt.order_by(Project.name)).all()
 
         published = dict(
@@ -267,9 +267,9 @@ class ReportService:
         if status:
             stmt = stmt.where(GuestPost.status == status)
         if date_from:
-            stmt = stmt.where(func.date(GuestPost.created_at) >= date_from)
+            stmt = stmt.where(cast(GuestPost.created_at, Date) >= date_from)
         if date_to:
-            stmt = stmt.where(func.date(GuestPost.created_at) <= date_to)
+            stmt = stmt.where(cast(GuestPost.created_at, Date) <= date_to)
         gps = self.db.scalars(stmt.order_by(GuestPost.created_at.desc())).all()
 
         rows: list[dict] = []
