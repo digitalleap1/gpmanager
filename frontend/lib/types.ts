@@ -552,3 +552,25 @@ export interface TaskListParams {
   search?: string;
   sort?: string;
 }
+
+/* ------------------------------------------------------------------ *
+ * Module 9 (Notifications) types
+ * ------------------------------------------------------------------ */
+
+export interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+/** Filter/query params accepted by `GET /notifications`. */
+export interface NotificationListParams {
+  unread?: boolean;
+  page?: number;
+  page_size?: number;
+}

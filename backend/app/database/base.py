@@ -51,6 +51,6 @@ from app.models.payment import Payment, PaymentStatusHistory  # noqa: F401
 # Module 8 — Tasks
 from app.models.task import Task, TaskComment  # noqa: F401
 # Module 9 — Notifications
-# from app.models.notification import Notification  # noqa: F401
+from app.models.notification import Notification  # noqa: F401
 # Module 11 — Activity logs
 # from app.models.activity_log import ActivityLog  # noqa: F401

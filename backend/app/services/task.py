@@ -17,6 +17,7 @@ from app.repositories.project import ProjectRepository
 from app.repositories.task import TaskRepository
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.activity import ActivityLogger, jsonable
+from app.services.notification import Notifier
 
 
 class TaskService:
@@ -70,6 +71,16 @@ class TaskService:
             entity_id=t.id,
             new={"name": t.name, "assigned_to": str(t.assigned_to) if t.assigned_to else None},
         )
+        if t.assigned_to:
+            Notifier(self.db).notify(
+                company_id=self.company_id,
+                user_id=t.assigned_to,
+                type="task_assigned",
+                title="Task assigned",
+                body=f"You were assigned the task '{t.name}'.",
+                entity_type="task",
+                entity_id=t.id,
+            )
         self.db.commit()
         self.db.refresh(t)
         return t
@@ -153,8 +164,18 @@ class TaskService:
             raise PermissionDenied("Only managers can run the overdue sweep")
         today = datetime.now(timezone.utc).date()
         candidates = self.tasks.overdue_candidates(self.company_id, today)
+        notifier = Notifier(self.db)
         for t in candidates:
             t.status = "overdue"
+            notifier.notify(
+                company_id=self.company_id,
+                user_id=t.assigned_to,
+                type="task_overdue",
+                title="Task overdue",
+                body=f"The task '{t.name}' is past its due date.",
+                entity_type="task",
+                entity_id=t.id,
+            )
         if candidates:
             self.activity.record(
                 company_id=self.company_id,

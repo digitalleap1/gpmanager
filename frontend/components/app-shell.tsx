@@ -16,6 +16,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { NotificationBell } from "@/components/notification-bell";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
@@ -159,6 +160,7 @@ export function AppShell({ title, children }: AppShellProps) {
           </div>
 
           <div className="flex items-center gap-3">
+            <NotificationBell />
             <span className="hidden text-sm text-muted-foreground sm:inline">
               {user.full_name}
             </span>

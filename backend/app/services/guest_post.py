@@ -18,6 +18,7 @@ from app.repositories.guest_post import GuestPostRepository
 from app.repositories.project import GoalRepository, ProjectRepository
 from app.schemas.guest_post import GuestPostCreate, GuestPostUpdate
 from app.services.activity import ActivityLogger, jsonable
+from app.services.notification import Notifier
 
 
 class GuestPostService:
@@ -187,6 +188,16 @@ class GuestPostService:
                 entity_id=gp.id,
                 new={"from": old, "to": new_status},
             )
+        if new_status == "invoice_sent":
+            Notifier(self.db).notify(
+                company_id=self.company_id,
+                user_id=gp.assigned_user_id,
+                type="payment_due",
+                title="Payment due",
+                body=f"Invoice sent for '{gp.website_name or 'a guest post'}'.",
+                entity_type="guest_post",
+                entity_id=gp.id,
+            )
 
     def _on_published(self, gp: GuestPost) -> None:
         """Automation: increment the project's monthly goal achieved count."""
@@ -203,6 +214,27 @@ class GuestPostService:
             self.db.add(goal)
         else:
             goal.achieved = (goal.achieved or 0) + 1
+        notifier = Notifier(self.db)
+        notifier.notify(
+            company_id=self.company_id,
+            user_id=gp.assigned_user_id,
+            type="guest_post_published",
+            title="Guest post published",
+            body=f"'{gp.website_name or 'A guest post'}' is now live.",
+            entity_type="guest_post",
+            entity_id=gp.id,
+        )
+        if goal.goal_target and goal.achieved >= goal.goal_target and gp.project is not None:
+            notifier.notify(
+                company_id=self.company_id,
+                user_id=gp.project.team_lead_id,
+                type="goal_achieved",
+                title="Monthly goal achieved",
+                body=f"Project '{gp.project.name}' reached its link goal for "
+                f"{when.year}-{when.month:02d}.",
+                entity_type="project",
+                entity_id=gp.project_id,
+            )
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,

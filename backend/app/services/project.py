@@ -17,6 +17,7 @@ from app.repositories.user import UserRepository
 from app.schemas.project import ProjectCreate, ProjectDetail, ProjectUpdate
 from app.services.activity import ActivityLogger, jsonable
 from app.services.goal import GoalService
+from app.services.notification import Notifier
 
 
 class ProjectService:
@@ -66,6 +67,16 @@ class ProjectService:
             entity_id=p.id,
             new={"name": p.name},
         )
+        if p.assignee_id:
+            Notifier(self.db).notify(
+                company_id=self.company_id,
+                user_id=p.assignee_id,
+                type="project_assigned",
+                title="Project assigned",
+                body=f"You were assigned to the project '{p.name}'.",
+                entity_type="project",
+                entity_id=p.id,
+            )
         self.db.commit()
         self.db.refresh(p)
         return p
@@ -78,6 +89,16 @@ class ProjectService:
         old = {key: getattr(p, key) for key in changes}
         for key, value in changes.items():
             setattr(p, key, value)
+        if changes.get("assignee_id"):
+            Notifier(self.db).notify(
+                company_id=self.company_id,
+                user_id=changes["assignee_id"],
+                type="project_assigned",
+                title="Project assigned",
+                body=f"You were assigned to the project '{p.name}'.",
+                entity_type="project",
+                entity_id=p.id,
+            )
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,

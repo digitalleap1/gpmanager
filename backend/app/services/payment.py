@@ -18,6 +18,7 @@ from app.repositories.payment import PaymentRepository
 from app.repositories.project import BudgetRepository
 from app.schemas.payment import PaymentCreate, PaymentUpdate
 from app.services.activity import ActivityLogger, jsonable
+from app.services.notification import Notifier
 
 
 class PaymentService:
@@ -174,6 +175,16 @@ class PaymentService:
                 self.db.add(budget)
             else:
                 budget.spent_amount = (budget.spent_amount or 0) + amount
+        if p.project is not None and p.project.team_lead_id:
+            Notifier(self.db).notify(
+                company_id=self.company_id,
+                user_id=p.project.team_lead_id,
+                type="payment_completed",
+                title="Payment completed",
+                body=f"A payment was marked paid for project '{p.project.name}'.",
+                entity_type="payment",
+                entity_id=p.id,
+            )
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,
