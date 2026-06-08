@@ -4,22 +4,30 @@ import { useEffect, useState } from "react";
 
 import { paymentStatusLabel } from "@/components/payment-status-badge";
 import type {
+  ClientListItem,
   CurrencyRef,
   PaymentCreate,
   PaymentStatus,
   ProjectListItem,
+  UserAdminRead,
   WebsiteListItem,
 } from "@/lib/types";
+import { listClients } from "@/services/client-service";
 import { getCurrencies } from "@/services/lookup-service";
 import { listProjects } from "@/services/project-service";
+import { listUsers } from "@/services/user-service";
 import { listWebsites } from "@/services/website-service";
 
 const STATUS_OPTIONS: PaymentStatus[] = [
   "pending",
-  "approved",
+  "negotiation",
   "paid",
-  "failed",
+  "free",
+  "cancelled",
+  "rejected",
 ];
+
+const VIA_OPTIONS = ["tool", "manual"] as const;
 
 interface PaymentFormProps {
   initial?: Partial<PaymentCreate>;
@@ -47,6 +55,7 @@ export function PaymentForm({
   error,
 }: PaymentFormProps) {
   const [projectId, setProjectId] = useState(initial?.project_id ?? "");
+  const [clientId, setClientId] = useState(initial?.client_id ?? "");
   const [websiteId, setWebsiteId] = useState(initial?.website_id ?? "");
   const [liveLink, setLiveLink] = useState(initial?.live_link ?? "");
   const [currency, setCurrency] = useState(initial?.currency ?? "USD");
@@ -70,8 +79,17 @@ export function PaymentForm({
   );
   const [remarks, setRemarks] = useState(initial?.remarks ?? "");
   const [status, setStatus] = useState(initial?.status ?? "pending");
+  const [attributedToId, setAttributedToId] = useState(
+    initial?.attributed_to_id ?? "",
+  );
+  const [via, setVia] = useState(initial?.via ?? "");
+  const [invoiceNumber, setInvoiceNumber] = useState(
+    initial?.invoice_number ?? "",
+  );
 
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
+  const [clients, setClients] = useState<ClientListItem[]>([]);
+  const [members, setMembers] = useState<UserAdminRead[]>([]);
   const [websites, setWebsites] = useState<WebsiteListItem[]>([]);
   const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -79,13 +97,15 @@ export function PaymentForm({
   useEffect(() => {
     let active = true;
     (async () => {
-      // Resolve projects + websites + currencies independently so one failing
-      // pick does not blank the others.
-      const [projectsRes, websitesRes, currenciesRes] =
+      // Resolve every picker independently so one failing pick does not blank
+      // the others.
+      const [projectsRes, websitesRes, currenciesRes, clientsRes, membersRes] =
         await Promise.allSettled([
           listProjects({ page: 1, page_size: 200, sort: "name" }),
           listWebsites({ page: 1, page_size: 200, sort: "domain" }),
           getCurrencies(),
+          listClients(),
+          listUsers(),
         ]);
       if (!active) return;
       if (projectsRes.status === "fulfilled") {
@@ -97,10 +117,18 @@ export function PaymentForm({
       if (currenciesRes.status === "fulfilled") {
         setCurrencies(currenciesRes.value);
       }
+      if (clientsRes.status === "fulfilled") {
+        setClients(clientsRes.value);
+      }
+      if (membersRes.status === "fulfilled") {
+        setMembers(membersRes.value);
+      }
       if (
         projectsRes.status === "rejected" ||
         websitesRes.status === "rejected" ||
-        currenciesRes.status === "rejected"
+        currenciesRes.status === "rejected" ||
+        clientsRes.status === "rejected" ||
+        membersRes.status === "rejected"
       ) {
         setLookupError(
           "Some pickers could not load. You can still fill the other fields.",
@@ -125,6 +153,7 @@ export function PaymentForm({
     e.preventDefault();
     const values: PaymentCreate = {
       project_id: projectId || null,
+      client_id: clientId || null,
       website_id: websiteId || null,
       live_link: liveLink.trim() || null,
       currency,
@@ -140,6 +169,9 @@ export function PaymentForm({
       transaction_id: transactionId.trim() || null,
       remarks: remarks.trim() || null,
       status,
+      attributed_to_id: attributedToId || null,
+      via: via || null,
+      invoice_number: invoiceNumber.trim() || null,
     };
     void onSubmit(values);
   }
@@ -170,6 +202,25 @@ export function PaymentForm({
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="client" className={labelClass}>
+            Client
+          </label>
+          <select
+            id="client"
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">— None —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </select>
@@ -323,6 +374,58 @@ export function PaymentForm({
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="attributed_to" className={labelClass}>
+            Attributed to
+          </label>
+          <select
+            id="attributed_to"
+            value={attributedToId}
+            onChange={(e) => setAttributedToId(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">— None —</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.full_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="via" className={labelClass}>
+            Via
+          </label>
+          <select
+            id="via"
+            value={via}
+            onChange={(e) => setVia(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">— None —</option>
+            {VIA_OPTIONS.map((v) => (
+              <option key={v} value={v}>
+                {v.charAt(0).toUpperCase() + v.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="invoice_number" className={labelClass}>
+            Invoice number
+          </label>
+          <input
+            id="invoice_number"
+            type="text"
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+            placeholder="INV-0001"
+            className={inputClass}
+          />
         </div>
 
         <div className="flex items-center gap-2 sm:pt-7">

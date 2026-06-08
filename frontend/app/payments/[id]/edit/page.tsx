@@ -68,6 +68,7 @@ export default function EditPaymentPage({
   const initial: Partial<PaymentCreate> | undefined = payment
     ? {
         project_id: payment.project_id,
+        client_id: payment.client_id,
         website_id: payment.website_id,
         live_link: payment.live_link,
         currency: payment.currency,
@@ -82,6 +83,9 @@ export default function EditPaymentPage({
         transaction_id: payment.transaction_id,
         remarks: payment.remarks,
         status: payment.status,
+        attributed_to_id: payment.attributed_to?.id ?? null,
+        via: payment.via,
+        invoice_number: payment.invoice_number,
       }
     : undefined;
 

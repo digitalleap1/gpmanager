@@ -7,16 +7,20 @@ interface PaymentStatusBadgeProps {
 
 /**
  * Status colours:
- *  - pending  → amber
- *  - approved → blue / indigo
- *  - paid     → green
- *  - failed   → red
+ *  - paid        → green
+ *  - pending     → amber
+ *  - free        → slate / blue
+ *  - negotiation → indigo
+ *  - cancelled   → slate
+ *  - rejected    → red
  */
 const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  approved: "bg-indigo-100 text-indigo-700",
   paid: "bg-green-100 text-green-700",
-  failed: "bg-red-100 text-red-700",
+  pending: "bg-amber-100 text-amber-700",
+  free: "bg-sky-100 text-sky-700",
+  negotiation: "bg-indigo-100 text-indigo-700",
+  cancelled: "bg-slate-200 text-slate-600",
+  rejected: "bg-red-100 text-red-700",
 };
 
 /** Human-friendly label for a payment status (e.g. `paid` → "Paid"). */

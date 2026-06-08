@@ -33,9 +33,11 @@ import { listProjects } from "@/services/project-service";
 const PAGE_SIZE = 20;
 const STATUS_OPTIONS: PaymentStatus[] = [
   "pending",
-  "approved",
+  "negotiation",
   "paid",
-  "failed",
+  "free",
+  "cancelled",
+  "rejected",
 ];
 
 /** Format an INR amount with a "₹" prefix, or a dash when null. */
@@ -367,6 +369,7 @@ export default function PaymentsPage() {
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Project</th>
+                  <th className="px-4 py-3 font-medium">Client</th>
                   <th className="px-4 py-3 font-medium">Website</th>
                   <th className="px-4 py-3 text-right font-medium">Amount</th>
                   <th className="px-4 py-3 text-right font-medium">
@@ -394,6 +397,18 @@ export default function PaymentsPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
+                      {p.client_id ? (
+                        <Link
+                          href={`/clients/${p.client_id}`}
+                          className="hover:text-foreground hover:underline"
+                        >
+                          {p.client_name ?? "—"}
+                        </Link>
+                      ) : (
+                        (p.client_name ?? "—")
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
                       {p.website_domain ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -410,11 +425,23 @@ export default function PaymentsPage() {
                               ≈ {formatCurrency(p.amount_usd)}
                             </span>
                           )}
+                          {p.attributed_to && (
+                            <span className="text-xs text-muted-foreground">
+                              by {p.attributed_to.full_name}
+                            </span>
+                          )}
                         </div>
                       ) : p.amount_usd != null ? (
-                        <span className="text-muted-foreground">
-                          {formatCurrency(p.amount_usd)}
-                        </span>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-muted-foreground">
+                            {formatCurrency(p.amount_usd)}
+                          </span>
+                          {p.attributed_to && (
+                            <span className="text-xs text-muted-foreground">
+                              by {p.attributed_to.full_name}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

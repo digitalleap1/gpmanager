@@ -45,6 +45,7 @@ export function listProjects(
     target_country_id: params.target_country_id,
     team_lead_id: params.team_lead_id,
     assignee_id: params.assignee_id,
+    client_id: params.client_id,
     archived: params.archived,
     sort: params.sort,
   };

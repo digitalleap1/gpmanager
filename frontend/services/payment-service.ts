@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { downloadFile, uploadFile } from "@/lib/file-transfer";
 import type {
   BulkImportResult,
+  LedgerStats,
   Page,
   PaymentCreate,
   PaymentDetail,
@@ -38,6 +39,7 @@ function buildQuery(params: Record<string, QueryValue>): string {
 function filterQuery(params: PaymentListParams): Record<string, QueryValue> {
   return {
     project_id: params.project_id,
+    client_id: params.client_id,
     status: params.status,
     date_from: params.date_from,
     date_to: params.date_to,
@@ -59,6 +61,11 @@ export function listPayments(
 
 export function getPayment(id: string): Promise<PaymentDetail> {
   return api.get<PaymentDetail>(`/payments/${id}`);
+}
+
+/** Aggregate revenue/pending/overdue stats for the ledger dashboard. */
+export function getLedgerStats(): Promise<LedgerStats> {
+  return api.get<LedgerStats>("/payments/ledger-stats");
 }
 
 export function createPayment(data: PaymentCreate): Promise<PaymentListItem> {

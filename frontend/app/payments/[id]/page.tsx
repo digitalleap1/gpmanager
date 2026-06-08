@@ -20,9 +20,11 @@ import { getPayment, setStatus } from "@/services/payment-service";
 
 const STATUS_OPTIONS: PaymentStatus[] = [
   "pending",
-  "approved",
+  "negotiation",
   "paid",
-  "failed",
+  "free",
+  "cancelled",
+  "rejected",
 ];
 
 /** Format an INR amount with a "₹" prefix, or null when absent. */
@@ -131,6 +133,21 @@ export default function PaymentDetailPage({
                 }
               />
               <Field
+                label="Client"
+                value={
+                  payment.client_id ? (
+                    <Link
+                      href={`/clients/${payment.client_id}`}
+                      className="text-primary hover:underline"
+                    >
+                      {payment.client_name ?? "View client"}
+                    </Link>
+                  ) : (
+                    payment.client_name
+                  )
+                }
+              />
+              <Field
                 label="Website"
                 value={
                   payment.website_id ? (
@@ -179,6 +196,19 @@ export default function PaymentDetailPage({
                 value={formatDate(payment.payment_date)}
               />
               <Field label="Transaction ID" value={payment.transaction_id} />
+              <Field
+                label="Attributed to"
+                value={payment.attributed_to?.full_name ?? null}
+              />
+              <Field
+                label="Via"
+                value={
+                  payment.via
+                    ? payment.via.charAt(0).toUpperCase() + payment.via.slice(1)
+                    : null
+                }
+              />
+              <Field label="Invoice number" value={payment.invoice_number} />
               <Field
                 label="Live link"
                 value={

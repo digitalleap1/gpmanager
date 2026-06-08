@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Building2,
   CheckSquare,
   CreditCard,
   FileBarChart,
@@ -15,6 +16,7 @@ import {
   User as UserIcon,
   Users,
   UsersRound,
+  Wallet,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -31,6 +33,7 @@ interface NavItem {
   label: string;
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
+  managerOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -39,6 +42,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/guest-posts", label: "Guest Posts", icon: FileText },
   { href: "/websites", label: "Websites", icon: Globe },
   { href: "/payments", label: "Payments", icon: CreditCard },
+  { href: "/clients", label: "Clients", icon: Building2, managerOnly: true },
+  { href: "/ledger", label: "Ledger", icon: Wallet, managerOnly: true },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/users", label: "Users", icon: Users, adminOnly: true },
@@ -108,7 +113,14 @@ export function AppShell({ title, children }: AppShellProps) {
     pathname === href || pathname.startsWith(`${href}/`);
 
   const isAdmin = user.is_superuser || user.roles.includes("admin");
-  const navItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+  const isManager =
+    user.is_superuser ||
+    user.roles.includes("admin") ||
+    user.roles.includes("team_lead");
+  const navItems = NAV_ITEMS.filter(
+    (item) =>
+      (!item.adminOnly || isAdmin) && (!item.managerOnly || isManager),
+  );
 
   const sidebarNav = (
     <nav className="flex-1 space-y-1 px-3 py-4">

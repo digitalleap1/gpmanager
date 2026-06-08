@@ -332,6 +332,7 @@ export interface ProjectListParams {
   target_country_id?: number;
   team_lead_id?: string;
   assignee_id?: string;
+  client_id?: string;
   archived?: boolean;
   sort?: string;
 }
@@ -562,7 +563,13 @@ export type WebsiteImportResult = BulkImportResult;
  * Module 7 (Payment Management) types
  * ------------------------------------------------------------------ */
 
-export type PaymentStatus = "pending" | "approved" | "paid" | "failed";
+export type PaymentStatus =
+  | "pending"
+  | "negotiation"
+  | "paid"
+  | "free"
+  | "cancelled"
+  | "rejected";
 
 export interface PaymentListItem {
   id: string;
@@ -583,6 +590,11 @@ export interface PaymentListItem {
   transaction_id: string | null;
   remarks: string | null;
   status: string;
+  client_id: string | null;
+  client_name: string | null;
+  attributed_to: UserRef | null;
+  via: string | null;
+  invoice_number: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -616,6 +628,10 @@ export interface PaymentCreate {
   transaction_id?: string | null;
   remarks?: string | null;
   status?: string;
+  client_id?: string | null;
+  attributed_to_id?: string | null;
+  via?: string | null;
+  invoice_number?: string | null;
 }
 
 /** Partial body for `PATCH /payments/{id}`. */
@@ -626,6 +642,7 @@ export interface PaymentListParams {
   page?: number;
   page_size?: number;
   project_id?: string;
+  client_id?: string;
   status?: string;
   date_from?: string;
   date_to?: string;
@@ -847,4 +864,104 @@ export interface ImportRecord {
 /** Full detail for a committed import batch (`GET /imports/{id}`). */
 export interface ImportBatchDetail extends ImportBatch {
   records: ImportRecord[];
+}
+
+/* ------------------------------------------------------------------ *
+ * Clients (`/clients`)                                                *
+ * ------------------------------------------------------------------ */
+
+/** A client row as returned by `GET /clients`. */
+export interface ClientListItem {
+  id: string;
+  name: string;
+  currency: string;
+  status: string;
+  total_budget: number;
+  total_paid: number;
+  remaining_budget: number;
+  project_count: number;
+  created_at: string;
+}
+
+/** Aggregate financial + project metrics for a single client. */
+export interface ClientMetrics {
+  total_budget: number;
+  total_paid: number;
+  consumed_budget: number;
+  remaining_budget: number;
+  pending_amount: number;
+  revenue: number;
+  project_count: number;
+  active_projects: number;
+  completed_projects: number;
+  payment_count: number;
+}
+
+/** Full client record (`GET /clients/{id}`, plus create/update responses). */
+export interface ClientDetail {
+  id: string;
+  name: string;
+  currency: string;
+  status: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  website: string | null;
+  notes: string | null;
+  created_at: string;
+  metrics: ClientMetrics;
+}
+
+/** Body for `POST /clients`. */
+export interface ClientCreate {
+  name: string;
+  currency?: string;
+  total_budget?: number;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  website?: string | null;
+  notes?: string | null;
+  status?: string;
+}
+
+/** Partial body for `PATCH /clients/{id}` — every field optional. */
+export type ClientUpdate = Partial<ClientCreate>;
+
+/* ------------------------------------------------------------------ *
+ * Payments Ledger (`GET /payments/ledger-stats`)                     *
+ * ------------------------------------------------------------------ */
+
+/** A single month's revenue point in the ledger trend. */
+export interface MonthlyRevenuePoint {
+  year: number;
+  month: number;
+  revenue: number;
+}
+
+/** A named entity (client or team member) with an associated revenue total. */
+export interface NamedRevenue {
+  id: string;
+  name: string;
+  revenue: number;
+}
+
+/** Count + amount aggregated for a single payment status. */
+export interface StatusBreakdown {
+  status: string;
+  count: number;
+  amount: number;
+}
+
+/** Payload returned by `GET /payments/ledger-stats`. */
+export interface LedgerStats {
+  total_revenue: number;
+  pending_count: number;
+  pending_amount: number;
+  overdue_count: number;
+  overdue_amount: number;
+  monthly_revenue: MonthlyRevenuePoint[];
+  client_revenue: NamedRevenue[];
+  team_revenue: NamedRevenue[];
+  status_breakdown: StatusBreakdown[];
 }
