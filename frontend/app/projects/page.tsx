@@ -1,28 +1,44 @@
 "use client";
 
-import { Archive, ArchiveRestore, Pencil, Plus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { BulkBar, type FileFormat } from "@/components/bulk-bar";
 import { StatusBadge } from "@/components/status-badge";
+import { useAuth } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api";
-import type { BulkImportResult, ProjectListItem } from "@/lib/types";
+import type {
+  BulkImportResult,
+  ProjectListItem,
+  UserAdminRead,
+} from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   archiveProject,
+  bulkAssignProjects,
   downloadProjectsTemplate,
   exportProjects,
   importProjects,
   listProjects,
   removeProject,
 } from "@/services/project-service";
+import { listUsers } from "@/services/user-service";
 
 const PAGE_SIZE = 20;
 const STATUS_OPTIONS = ["active", "completed", "hold", "cancelled"] as const;
 
 export default function ProjectsPage() {
+  const { user: me } = useAuth();
+  // Managers (admins + team leads) get the bulk-select + bulk-assign UI.
+  const isManager = Boolean(
+    me &&
+      (me.is_superuser ||
+        me.roles.includes("admin") ||
+        me.roles.includes("team_lead")),
+  );
+
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -42,6 +58,14 @@ export default function ProjectsPage() {
   const [importResult, setImportResult] = useState<BulkImportResult | null>(
     null,
   );
+
+  // Bulk-select + bulk-assign state (managers only).
+  const [users, setUsers] = useState<UserAdminRead[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkAssigneeId, setBulkAssigneeId] = useState("");
+  const [bulkTeamLeadId, setBulkTeamLeadId] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [assignResult, setAssignResult] = useState<string | null>(null);
 
   // Debounce the search box into the active `search` filter.
   useEffect(() => {
@@ -81,6 +105,100 @@ export default function ProjectsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Load the users list once for the bulk-assign pickers (managers only).
+  useEffect(() => {
+    if (!isManager) return;
+    let active = true;
+    (async () => {
+      try {
+        const data = await listUsers();
+        if (active) setUsers(data);
+      } catch {
+        // Non-fatal: the bulk-assign selects simply stay empty.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isManager]);
+
+  // Clear the current selection whenever the page or filters change so we
+  // never act on rows that are no longer visible.
+  useEffect(() => {
+    setSelected(new Set());
+    setAssignResult(null);
+  }, [page, search, status, archived]);
+
+  const allSelectedOnPage =
+    items.length > 0 && items.every((p) => selected.has(p.id));
+
+  const toggleAll = useCallback(() => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const everySelected = items.every((p) => next.has(p.id));
+      if (everySelected) {
+        for (const p of items) next.delete(p.id);
+      } else {
+        for (const p of items) next.add(p.id);
+      }
+      return next;
+    });
+  }, [items]);
+
+  const toggleOne = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const teamLeadOptions = useMemo(
+    () =>
+      users.filter(
+        (u) => u.is_superuser || u.roles.includes("admin") || u.roles.includes("team_lead"),
+      ),
+    [users],
+  );
+
+  function clearSelection() {
+    setSelected(new Set());
+    setBulkAssigneeId("");
+    setBulkTeamLeadId("");
+    setAssignResult(null);
+  }
+
+  async function handleBulkAssign() {
+    if (selected.size === 0 || (!bulkAssigneeId && !bulkTeamLeadId)) return;
+    setActionError(null);
+    setAssignResult(null);
+    setAssigning(true);
+    try {
+      const result = await bulkAssignProjects([...selected], {
+        ...(bulkAssigneeId ? { assignee_id: bulkAssigneeId } : {}),
+        ...(bulkTeamLeadId ? { team_lead_id: bulkTeamLeadId } : {}),
+      });
+      setAssignResult(
+        `Assigned ${result.updated} project${result.updated === 1 ? "" : "s"}` +
+          (result.skipped > 0 ? ` · ${result.skipped} skipped` : "") +
+          ".",
+      );
+      setSelected(new Set());
+      setBulkAssigneeId("");
+      setBulkTeamLeadId("");
+      await load();
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to assign the selected projects. Please try again.",
+      );
+    } finally {
+      setAssigning(false);
+    }
+  }
 
   async function handleExport(format: FileFormat) {
     setActionError(null);
@@ -241,6 +359,86 @@ export default function ProjectsPage() {
           </p>
         )}
 
+        {/* Bulk-assign result toast */}
+        {assignResult && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-green-50 px-3 py-2 text-sm text-green-700">
+            <span>{assignResult}</span>
+            <button
+              type="button"
+              onClick={() => setAssignResult(null)}
+              className="text-xs text-green-700/70 hover:text-green-700"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Sticky bulk-action bar (managers only, ≥1 row selected) */}
+        {isManager && selected.size > 0 && (
+          <div className="sticky top-2 z-20 flex flex-col gap-3 rounded-xl border border-primary/30 bg-card p-3 shadow-md sm:flex-row sm:items-center sm:gap-2">
+            <span className="text-sm font-semibold text-[#1A1F4D]">
+              {selected.size} selected
+            </span>
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+              <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <span className="hidden sm:inline">Assignee</span>
+                <select
+                  aria-label="Bulk assignee"
+                  value={bulkAssigneeId}
+                  onChange={(e) => setBulkAssigneeId(e.target.value)}
+                  disabled={assigning}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                >
+                  <option value="">— keep —</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <span className="hidden sm:inline">Team Lead</span>
+                <select
+                  aria-label="Bulk team lead"
+                  value={bulkTeamLeadId}
+                  onChange={(e) => setBulkTeamLeadId(e.target.value)}
+                  disabled={assigning}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                >
+                  <option value="">— keep —</option>
+                  {teamLeadOptions.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleBulkAssign}
+                disabled={
+                  assigning || (!bulkAssigneeId && !bulkTeamLeadId)
+                }
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {assigning ? "Assigning…" : "Assign"}
+              </button>
+              <button
+                type="button"
+                onClick={clearSelection}
+                disabled={assigning}
+                className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Import result summary */}
         {importResult && (
           <div className="rounded-md border border-border bg-card p-3 text-sm">
@@ -291,6 +489,17 @@ export default function ProjectsPage() {
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  {isManager && (
+                    <th className="w-10 px-4 py-3 font-medium">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all projects on this page"
+                        checked={allSelectedOnPage}
+                        onChange={toggleAll}
+                        className="h-4 w-4 rounded border-input align-middle"
+                      />
+                    </th>
+                  )}
                   <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Niche</th>
                   <th className="px-4 py-3 font-medium">Country</th>
@@ -307,8 +516,21 @@ export default function ProjectsPage() {
                 {items.map((p) => (
                   <tr
                     key={p.id}
-                    className="border-b border-border last:border-0 hover:bg-accent/40"
+                    className={`border-b border-border last:border-0 hover:bg-accent/40 ${
+                      isManager && selected.has(p.id) ? "bg-primary/5" : ""
+                    }`}
                   >
+                    {isManager && (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select project ${p.name}`}
+                          checked={selected.has(p.id)}
+                          onChange={() => toggleOne(p.id)}
+                          className="h-4 w-4 rounded border-input align-middle"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <Link
                         href={`/projects/${p.id}`}

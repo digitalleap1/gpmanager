@@ -6,6 +6,7 @@
 import { api } from "@/lib/api";
 import { downloadFile, uploadFile } from "@/lib/file-transfer";
 import type {
+  BulkAssignResult,
   BulkImportResult,
   MonthlyBudget,
   MonthlyGoal,
@@ -76,6 +77,23 @@ export function archiveProject(
   archived: boolean,
 ): Promise<ProjectListItem> {
   return api.post<ProjectListItem>(`/projects/${id}/archive`, { archived });
+}
+
+/**
+ * Bulk-assign an assignee and/or team lead to many projects at once.
+ * Manager-only on the backend; the server enforces RBAC scope and the
+ * team-lead assignment rule, so callers only get back how many rows were
+ * `updated` vs `skipped`. At least one of `assignee_id` / `team_lead_id`
+ * must be provided.
+ */
+export function bulkAssignProjects(
+  projectIds: string[],
+  opts: { assignee_id?: string | null; team_lead_id?: string | null },
+): Promise<BulkAssignResult> {
+  return api.post<BulkAssignResult>("/projects/bulk-assign", {
+    project_ids: projectIds,
+    ...opts,
+  });
 }
 
 /* --- Bulk import / export --- */

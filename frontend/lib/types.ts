@@ -322,6 +322,12 @@ export interface ProjectCreate {
   notes?: string | null;
 }
 
+/** Result envelope returned by `POST /projects/bulk-assign`. */
+export interface BulkAssignResult {
+  updated: number;
+  skipped: number;
+}
+
 /** Filter/query params accepted by `GET /projects`. */
 export interface ProjectListParams {
   page?: number;
