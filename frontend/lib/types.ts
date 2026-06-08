@@ -116,6 +116,50 @@ export interface UserSummary {
   roles: string[];
 }
 
+/* ------------------------------------------------------------------ *
+ * User Management (admin) types
+ * ------------------------------------------------------------------ */
+
+export type RoleSlug = "admin" | "team_lead" | "user";
+export type UserStatus = "active" | "suspended" | "deactivated";
+
+/** A system role returned by `GET /users/roles`. */
+export interface RoleRead {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+/** Full user record returned by the admin user-management endpoints. */
+export interface UserAdminRead {
+  id: string;
+  email: string;
+  full_name: string;
+  phone: string | null;
+  status: string;
+  is_superuser: boolean;
+  roles: string[];
+  created_at: string;
+  last_login_at: string | null;
+}
+
+/** Body for `POST /users`. */
+export interface UserCreate {
+  email: string;
+  full_name: string;
+  password: string;
+  role_slug: RoleSlug;
+  phone?: string | null;
+}
+
+/** Body for `PATCH /users/{id}` — every field optional. */
+export interface UserUpdate {
+  full_name?: string;
+  phone?: string | null;
+  status?: UserStatus;
+  role_slug?: RoleSlug;
+}
+
 /* --- Projects --- */
 
 export type ProjectStatus = "active" | "completed" | "hold" | "cancelled";

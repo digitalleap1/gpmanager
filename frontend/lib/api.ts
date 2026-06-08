@@ -15,7 +15,39 @@ import {
   setTokens,
 } from "./auth-tokens";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+/**
+ * Resolve the API base URL.
+ *
+ * Defaults to the local backend on :8010. The important bit: if the API is
+ * configured for `localhost`/`127.0.0.1` but the app is actually being served
+ * from another host (e.g. you opened it on a second device via the machine's
+ * LAN IP like http://192.168.1.20:3000), point the API at that same host —
+ * otherwise the browser's `fetch` would hit *its own* localhost, which has no
+ * backend, and every login would fail. This is the usual cause of
+ * "works on my PC, can't log in from another browser/device".
+ */
+function resolveApiBase(): string {
+  const configured =
+    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010/api";
+  if (typeof window === "undefined") return configured;
+  try {
+    const url = new URL(configured);
+    const pageHost = window.location.hostname;
+    const apiIsLocal =
+      url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    const pageIsLocal =
+      pageHost === "localhost" || pageHost === "127.0.0.1";
+    if (apiIsLocal && !pageIsLocal) {
+      url.hostname = pageHost;
+      return url.toString().replace(/\/$/, "");
+    }
+  } catch {
+    // Malformed env value — fall back to the configured string as-is.
+  }
+  return configured;
+}
+
+const API_URL = resolveApiBase();
 
 export class ApiError extends Error {
   constructor(
@@ -24,6 +56,22 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = "ApiError";
+  }
+}
+
+/**
+ * `fetch`, but a network-level failure (server down, wrong host, CORS, offline)
+ * becomes an `ApiError(0, …)` with a clear message instead of a bare TypeError,
+ * so the UI can tell "can't reach the server" apart from "wrong password".
+ */
+async function safeFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw new ApiError(
+      0,
+      `Can't reach the server at ${API_URL}. Make sure the backend is running and reachable from this device.`,
+    );
   }
 }
 
@@ -52,7 +100,7 @@ async function refreshTokens(): Promise<string | null> {
     return null;
   }
 
-  const response = await fetch(`${API_URL}/auth/refresh`, {
+  const response = await safeFetch(`${API_URL}/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token }),
@@ -82,7 +130,7 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { _skipRefresh, ...rest } = options;
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await safeFetch(`${API_URL}${path}`, {
     ...rest,
     headers: buildHeaders(rest),
   });
@@ -101,7 +149,7 @@ export async function apiFetch<T>(
         ...buildHeaders(rest),
         Authorization: `Bearer ${newAccess}`,
       };
-      const retry = await fetch(`${API_URL}${path}`, {
+      const retry = await safeFetch(`${API_URL}${path}`, {
         ...rest,
         headers: retryHeaders,
       });

@@ -5,7 +5,8 @@ import { AuthProvider } from "@/components/auth-provider";
 export const metadata: Metadata = {
   title: "Digital Leap GPOMS",
   description:
-    "Guest Post Operations Management System — replace spreadsheets with a real operations platform.",
+    "Digital Leap Marketing Solutions — run your guest-post operations like a pro. Projects, outreach, payments, and reporting in one branded platform.",
+  applicationName: "Digital Leap GPOMS",
 };
 
 export default function RootLayout({

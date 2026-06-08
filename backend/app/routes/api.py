@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.routes.auth import router as auth_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.guest_posts import router as guest_posts_router
+from app.routes.integrations import router as integrations_router
 from app.routes.lookups import router as lookups_router
 from app.routes.notifications import router as notifications_router
 from app.routes.payments import router as payments_router
@@ -37,6 +38,7 @@ api_router.include_router(payments_router, prefix="/payments", tags=["payments"]
 api_router.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(reports_router, prefix="/reports", tags=["reports"])
+api_router.include_router(integrations_router, prefix="/integrations", tags=["integrations"])
 # from app.routes.guest_posts import router as guest_posts_router
 # from app.routes.websites import router as websites_router
 # from app.routes.payments import router as payments_router

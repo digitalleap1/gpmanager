@@ -38,6 +38,40 @@ class Settings(BaseSettings):
     FIRST_ADMIN_EMAIL: str = "admin@digitalleap.com"
     FIRST_ADMIN_PASSWORD: str = "ChangeMe123!"
 
+    # --- Integrations: Email (SMTP) ---  all blank by default => disabled (safe offline)
+    # Thunderbird-compatible: point these at the same SMTP server Thunderbird uses
+    # (e.g. mail.digitalleapmarketing.com : 587, STARTTLS) and notifications turn on.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""  # falls back to SMTP_USER when blank
+    SMTP_USE_TLS: bool = True  # STARTTLS on 587; set False + SMTP_USE_SSL for 465
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT: int = 10
+
+    # Where operational alerts (logins, new users, etc.) are sent.
+    NOTIFY_EMAIL: str = ""
+
+    # --- Integrations: Slack (incoming webhook) ---  blank => disabled
+    SLACK_WEBHOOK_URL: str = ""
+
+    # Master switch for event notifications (login/user events). Off by default so
+    # the offline local run never tries to reach the network.
+    NOTIFICATIONS_ENABLED: bool = False
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.SMTP_HOST and (self.NOTIFY_EMAIL or self.SMTP_FROM or self.SMTP_USER))
+
+    @property
+    def slack_enabled(self) -> bool:
+        return bool(self.SLACK_WEBHOOK_URL)
+
+    @property
+    def email_from(self) -> str:
+        return self.SMTP_FROM or self.SMTP_USER
+
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",") if origin.strip()]

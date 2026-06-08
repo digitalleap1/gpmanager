@@ -1,5 +1,17 @@
 "use client";
 
+import {
+  BarChart3,
+  CheckCircle2,
+  CircleDollarSign,
+  CircleSlash,
+  FolderKanban,
+  Link2,
+  PauseCircle,
+  Target,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
@@ -85,36 +97,80 @@ export default function DashboardPage() {
         </p>
       ) : summary ? (
         <div className="space-y-8">
+          {/* Page intro */}
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-[#1A1F4D]">
+              Operations overview
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              A live snapshot of projects, links, payments, and your team.
+            </p>
+          </div>
+
           {/* Stat cards */}
           <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            <StatCard label="Total Projects" value={summary.total_projects} />
-            <StatCard label="Active" value={summary.active_projects} />
-            <StatCard label="Completed" value={summary.completed_projects} />
-            <StatCard label="On Hold" value={summary.on_hold_projects} />
             <StatCard
+              icon={FolderKanban}
+              label="Total Projects"
+              value={summary.total_projects}
+            />
+            <StatCard
+              icon={BarChart3}
+              label="Active"
+              value={summary.active_projects}
+            />
+            <StatCard
+              icon={CheckCircle2}
+              label="Completed"
+              value={summary.completed_projects}
+            />
+            <StatCard
+              icon={PauseCircle}
+              label="On Hold"
+              value={summary.on_hold_projects}
+            />
+            <StatCard
+              icon={Target}
               label="Target Links"
               value={summary.total_target_links}
             />
-            <StatCard label="Live Links" value={summary.total_live_links} />
             <StatCard
+              icon={Link2}
+              label="Live Links"
+              value={summary.total_live_links}
+            />
+            <StatCard
+              icon={CircleDollarSign}
               label="Pending Payments"
               value={summary.pending_payments_count}
               sublabel={formatCurrency(summary.pending_payments_amount)}
             />
             <StatCard
+              icon={Wallet}
               label="Monthly Budget"
               value={formatCurrency(summary.monthly_budget_total)}
               sublabel={`${formatCurrency(summary.monthly_spent_total)} spent`}
             />
-            <StatCard label="Team Members" value={summary.team_members} />
-            <StatCard label="Cancelled" value={summary.cancelled_projects} />
+            <StatCard
+              icon={Users}
+              label="Team Members"
+              value={summary.team_members}
+            />
+            <StatCard
+              icon={CircleSlash}
+              label="Cancelled"
+              value={summary.cancelled_projects}
+            />
           </section>
 
           {/* Charts */}
           <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <div className="rounded-lg border border-border bg-card p-5 text-card-foreground">
-              <h2 className="mb-4 text-sm font-semibold">
-                Monthly Links · {year}
+            <div className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+              <h2 className="mb-4 text-base font-semibold text-[#1A1F4D]">
+                Monthly Links{" "}
+                <span className="font-normal text-muted-foreground">
+                  · {year}
+                </span>
               </h2>
               <BarChart
                 labels={MONTHS}
@@ -132,9 +188,12 @@ export default function DashboardPage() {
                 ]}
               />
             </div>
-            <div className="rounded-lg border border-border bg-card p-5 text-card-foreground">
-              <h2 className="mb-4 text-sm font-semibold">
-                Budget Usage · {year}
+            <div className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+              <h2 className="mb-4 text-base font-semibold text-[#1A1F4D]">
+                Budget Usage{" "}
+                <span className="font-normal text-muted-foreground">
+                  · {year}
+                </span>
               </h2>
               <BarChart
                 labels={MONTHS}
@@ -155,8 +214,10 @@ export default function DashboardPage() {
           </section>
 
           {/* Recent activity */}
-          <section className="rounded-lg border border-border bg-card p-5 text-card-foreground">
-            <h2 className="mb-4 text-sm font-semibold">Recent Activity</h2>
+          <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+            <h2 className="mb-4 text-base font-semibold text-[#1A1F4D]">
+              Recent Activity
+            </h2>
             {activity.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No recent activity yet.
