@@ -45,7 +45,7 @@ class PaymentCreate(BaseModel):
     fx_to_usd: float | None = Field(default=None, gt=0)
     amount_usd: float | None = Field(default=None, ge=0)
     amount_inr: float | None = Field(default=None, ge=0)
-    mode_of_payment: str | None = Field(default=None, max_length=60)
+    mode_of_payment: str | None = Field(default=None, max_length=255)
     notified: bool = False
     invoice_link: str | None = Field(default=None, max_length=700)
     payment_date: date | None = None
@@ -78,7 +78,7 @@ class PaymentUpdate(BaseModel):
     fx_to_usd: float | None = Field(default=None, gt=0)
     amount_usd: float | None = Field(default=None, ge=0)
     amount_inr: float | None = Field(default=None, ge=0)
-    mode_of_payment: str | None = Field(default=None, max_length=60)
+    mode_of_payment: str | None = Field(default=None, max_length=255)
     notified: bool | None = None
     invoice_link: str | None = Field(default=None, max_length=700)
     payment_date: date | None = None

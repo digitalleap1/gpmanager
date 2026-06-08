@@ -534,7 +534,10 @@ class PaymentsLedgerProfile:
     @staticmethod
     def _key(client, live_link, amount, pay_date) -> str:
         d = pay_date.isoformat() if hasattr(pay_date, "isoformat") else (pay_date or "")
-        return f"{(client or '').strip().lower()}|{(live_link or '').strip().lower()}|{amount or ''}|{d}"
+        # Normalize amount to a fixed format so a stored Decimal and an extracted
+        # float compare equal (e.g. Decimal('40.00') and 40.0 both -> "40.00").
+        amt = "" if amount in (None, "") else f"{float(amount):.2f}"
+        return f"{(client or '').strip().lower()}|{(live_link or '').strip().lower()}|{amt}|{d}"
 
     def dedupe_key(self, canonical: dict) -> str:
         return self._key(
@@ -578,10 +581,10 @@ class PaymentsLedgerProfile:
             fx_to_usd=1.0 if amount is not None else None,
             amount_usd=amount_usd,
             amount_inr=canonical.get("amount_inr"),
-            live_link=canonical.get("live_link") or None,
-            mode_of_payment=canonical.get("mode_of_payment") or None,
+            live_link=_clip(canonical.get("live_link"), 700),
+            mode_of_payment=_clip(canonical.get("mode_of_payment"), 255),
             payment_date=canonical.get("payment_date"),
-            transaction_id=(canonical.get("transaction_id") or None),
+            transaction_id=_clip(canonical.get("transaction_id"), 120),
             remarks=canonical.get("remarks") or None,
             notified=bool(canonical.get("notified")),
             attributed_to_id=member.id if member else None,
@@ -608,6 +611,14 @@ def _safe_number(value) -> float | None:
 
 def _truthy(value: str) -> bool:
     return (value or "").strip().lower() in {"yes", "y", "true", "1", "done", "notified"}
+
+
+def _clip(value: str | None, length: int) -> str | None:
+    """Trim a value to fit its column; returns None for blanks."""
+    if not value:
+        return None
+    text = str(value).strip()
+    return text[:length] if text else None
 
 
 # --- registry ---

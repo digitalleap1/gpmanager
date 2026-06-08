@@ -43,7 +43,8 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     fx_to_usd: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     amount_inr: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
-    mode_of_payment: Mapped[str | None] = mapped_column(String(60))
+    # Wide enough to hold pasted payment-link URLs (PayPal/Stripe/Payoneer).
+    mode_of_payment: Mapped[str | None] = mapped_column(String(255))
     invoice_number: Mapped[str | None] = mapped_column(String(120))
     notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Team attribution: who produced/handled the link, and how (tool | manual).
