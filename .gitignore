@@ -58,3 +58,6 @@ docker-compose.override.yml
 
 # Real business data — never publish to the public repo
 docs/*.xlsx
+
+# stray xlsx at repo root (real data) must never be committed
+/*.xlsx
