@@ -16,6 +16,7 @@ from app.repositories.project import ProjectRepository
 from app.repositories.user import UserRepository
 from app.schemas.project import ProjectCreate, ProjectDetail, ProjectUpdate
 from app.services.activity import ActivityLogger, jsonable
+from app.services.assignment import ensure_assignable
 from app.services.goal import GoalService
 from app.services.notification import Notifier
 
@@ -56,6 +57,7 @@ class ProjectService:
     def create(self, data: ProjectCreate) -> Project:
         if not is_manager(self.user):
             raise PermissionDenied("You do not have permission to create projects")
+        ensure_assignable(self.db, self.user, data.assignee_id)
         p = Project(company_id=self.company_id, created_by=self.user.id, **data.model_dump())
         self.projects.add(p)
         self.activity.record(
@@ -86,6 +88,8 @@ class ProjectService:
             raise PermissionDenied()
         p = self.get(project_id)
         changes = data.model_dump(exclude_unset=True)
+        if "assignee_id" in changes:
+            ensure_assignable(self.db, self.user, changes["assignee_id"])
         old = {key: getattr(p, key) for key in changes}
         for key, value in changes.items():
             setattr(p, key, value)

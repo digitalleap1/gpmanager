@@ -17,6 +17,7 @@ from app.repositories.project import ProjectRepository
 from app.repositories.task import TaskRepository
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.activity import ActivityLogger, jsonable
+from app.services.assignment import ensure_assignable
 from app.services.notification import Notifier
 
 
@@ -59,6 +60,7 @@ class TaskService:
         if data.project_id is not None:
             if self.projects.get_for_company(data.project_id, self.company_id) is None:
                 raise NotFound("Project not found")
+        ensure_assignable(self.db, self.user, data.assigned_to)
         t = Task(company_id=self.company_id, created_by=self.user.id, **data.model_dump())
         self.tasks.add(t)
         action = "task.assigned" if t.assigned_to else "task.created"
@@ -90,6 +92,8 @@ class TaskService:
         if not self._can_edit(t):
             raise PermissionDenied()
         changes = data.model_dump(exclude_unset=True)
+        if "assigned_to" in changes:
+            ensure_assignable(self.db, self.user, changes["assigned_to"])
         old = {key: getattr(t, key) for key in changes}
         for key, value in changes.items():
             setattr(t, key, value)
