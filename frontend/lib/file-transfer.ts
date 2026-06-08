@@ -95,13 +95,10 @@ export function downloadCsv(path: string, filename: string): Promise<void> {
  * non-ok response.
  */
 export async function uploadFile<T>(path: string, file: File): Promise<T> {
-  const form = new FormData();
-  form.append("file", file);
-
   const response = await fetch(`${API_URL}${path}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
-    body: form,
+    body: buildForm(file),
   });
 
   if (!response.ok) {
@@ -109,4 +106,40 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+/**
+ * Like {@link uploadFile}, but appends extra string form fields alongside the
+ * `file` (e.g. the Import Engine's `profile`). Same bearer auth + `ApiError`
+ * handling. We deliberately do NOT set `Content-Type` — the browser adds the
+ * multipart boundary itself.
+ */
+export async function uploadFileWithFields<T>(
+  path: string,
+  file: File,
+  fields: Record<string, string>,
+): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+    body: buildForm(file, fields),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await readError(response));
+  }
+
+  return (await response.json()) as T;
+}
+
+/** Build a multipart body with the `file` plus any extra string fields. */
+function buildForm(file: File, fields?: Record<string, string>): FormData {
+  const form = new FormData();
+  form.append("file", file);
+  if (fields) {
+    for (const [key, value] of Object.entries(fields)) {
+      form.append(key, value);
+    }
+  }
+  return form;
 }

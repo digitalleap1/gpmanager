@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   ShieldCheck,
+  Upload,
   User as UserIcon,
   Users,
   UsersRound,
@@ -48,6 +49,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: ShieldCheck,
     adminOnly: true,
   },
+  { href: "/imports", label: "Imports", icon: Upload, adminOnly: true },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ];
 

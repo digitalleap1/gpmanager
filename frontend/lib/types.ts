@@ -767,3 +767,84 @@ export interface ReportFilters {
   country_id?: number;
   status?: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* Import Engine (`/imports`)                                          */
+/* ------------------------------------------------------------------ */
+
+/** A single source→target column mapping within an import profile. */
+export interface ImportMapping {
+  source: string;
+  target: string;
+}
+
+/** An importable entity preset (`GET /imports/profiles`). */
+export interface ImportProfile {
+  key: string;
+  label: string;
+  description: string;
+  entity_type: string;
+  mapping: ImportMapping[];
+}
+
+/** A validation note attached to a previewed row. */
+export interface PreviewIssue {
+  level: "error" | "warning";
+  message: string;
+}
+
+/** Status of a row during a dry-run preview. */
+export type PreviewRowStatus = "new" | "duplicate" | "invalid";
+
+/** One row of a dry-run preview. */
+export interface PreviewRow {
+  row_number: number;
+  status: PreviewRowStatus;
+  label: string;
+  source: string | null;
+  issues: PreviewIssue[];
+  values: Record<string, unknown>;
+}
+
+/** Dry-run report returned by `POST /imports/preview`. */
+export interface PreviewReport {
+  profile: string;
+  label: string;
+  entity_type: string;
+  source_filename: string | null;
+  mapping: ImportMapping[];
+  total_rows: number;
+  new_count: number;
+  duplicate_count: number;
+  invalid_count: number;
+  warning_count: number;
+  truncated: boolean;
+  rows: PreviewRow[];
+}
+
+/** Summary of a committed import batch (`GET /imports`). */
+export interface ImportBatch {
+  id: string;
+  profile: string;
+  entity_type: string;
+  source_filename: string | null;
+  status: string;
+  created_count: number;
+  updated_count: number;
+  skipped_count: number;
+  error_count: number;
+  created_at: string;
+}
+
+/** Per-row outcome of a committed import. */
+export interface ImportRecord {
+  row_number: number;
+  action: string;
+  entity_id: string | null;
+  message: string | null;
+}
+
+/** Full detail for a committed import batch (`GET /imports/{id}`). */
+export interface ImportBatchDetail extends ImportBatch {
+  records: ImportRecord[];
+}
