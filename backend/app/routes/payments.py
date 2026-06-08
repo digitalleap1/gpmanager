@@ -33,6 +33,7 @@ def list_payments(
     db: DbSession,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    client_id: uuid.UUID | None = None,
     project_id: uuid.UUID | None = None,
     status_: str | None = Query(None, alias="status"),
     date_from: date | None = None,
@@ -41,6 +42,7 @@ def list_payments(
     sort: str = "-created_at",
 ) -> Page[PaymentListItem]:
     items, total = PaymentService(db, user).list(
+        client_id=client_id,
         project_id=project_id,
         status=status_,
         date_from=date_from,

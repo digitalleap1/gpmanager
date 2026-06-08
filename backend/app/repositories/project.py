@@ -37,6 +37,7 @@ class ProjectRepository(BaseRepository[Project]):
         *,
         search: str | None,
         status: str | None,
+        client_id: uuid.UUID | None = None,
         main_niche_id: int | None,
         target_country_id: int | None,
         team_lead_id: uuid.UUID | None,
@@ -47,6 +48,8 @@ class ProjectRepository(BaseRepository[Project]):
         stmt = select(Project).where(Project.company_id == company_id)
         if not include_archived:
             stmt = stmt.where(Project.is_archived.is_(False))
+        if client_id:
+            stmt = stmt.where(Project.client_id == client_id)
         if status:
             stmt = stmt.where(Project.status == status)
         if main_niche_id:
@@ -78,6 +81,7 @@ class ProjectRepository(BaseRepository[Project]):
         *,
         search: str | None = None,
         status: str | None = None,
+        client_id: uuid.UUID | None = None,
         main_niche_id: int | None = None,
         target_country_id: int | None = None,
         team_lead_id: uuid.UUID | None = None,
@@ -91,6 +95,7 @@ class ProjectRepository(BaseRepository[Project]):
         filters = dict(
             search=search,
             status=status,
+            client_id=client_id,
             main_niche_id=main_niche_id,
             target_country_id=target_country_id,
             team_lead_id=team_lead_id,

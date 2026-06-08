@@ -30,6 +30,7 @@ class PaymentRepository(BaseRepository[Payment]):
         self,
         company_id: uuid.UUID,
         *,
+        client_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None,
         status: str | None,
         date_from: date | None,
@@ -38,6 +39,8 @@ class PaymentRepository(BaseRepository[Payment]):
         restrict_user_id: uuid.UUID | None,
     ) -> Select:
         stmt = select(Payment).where(Payment.company_id == company_id)
+        if client_id:
+            stmt = stmt.where(Payment.client_id == client_id)
         if project_id:
             stmt = stmt.where(Payment.project_id == project_id)
         if status:
@@ -63,6 +66,7 @@ class PaymentRepository(BaseRepository[Payment]):
         self,
         company_id: uuid.UUID,
         *,
+        client_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
         status: str | None = None,
         date_from: date | None = None,
@@ -74,6 +78,7 @@ class PaymentRepository(BaseRepository[Payment]):
         limit: int = 20,
     ) -> tuple[Sequence[Payment], int]:
         filters = dict(
+            client_id=client_id,
             project_id=project_id,
             status=status,
             date_from=date_from,

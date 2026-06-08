@@ -41,6 +41,7 @@ def list_projects(
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = None,
     status_: str | None = Query(None, alias="status"),
+    client_id: uuid.UUID | None = None,
     main_niche_id: int | None = None,
     target_country_id: int | None = None,
     team_lead_id: uuid.UUID | None = None,
@@ -51,6 +52,7 @@ def list_projects(
     items, total = ProjectService(db, user).list(
         search=search,
         status=status_,
+        client_id=client_id,
         main_niche_id=main_niche_id,
         target_country_id=target_country_id,
         team_lead_id=team_lead_id,
