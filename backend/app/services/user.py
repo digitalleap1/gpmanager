@@ -22,6 +22,10 @@ from app.services.activity import ActivityLogger, jsonable
 SYSTEM_ROLE_ORDER = ("admin", "team_lead", "user")
 
 
+def _is_admin_slug(slug: str) -> bool:
+    return slug == "admin"
+
+
 class UserAdminService:
     def __init__(self, db: Session, user: User) -> None:
         self.db = db
@@ -56,14 +60,36 @@ class UserAdminService:
             raise NotFound("User not found")
         return user
 
-    def system_roles(self) -> list[Role]:
+    def assignable_roles(self) -> list[Role]:
+        """System roles (admin/team_lead/user) plus this company's custom roles."""
         self._require_manager()
-        roles = [self.roles.get_system_role(slug) for slug in SYSTEM_ROLE_ORDER]
-        return [role for role in roles if role is not None]
+        roles = self.db.scalars(
+            select(Role).where(
+                (Role.company_id.is_(None)) | (Role.company_id == self.company_id)
+            )
+        ).all()
+        order = {slug: i for i, slug in enumerate(SYSTEM_ROLE_ORDER)}
+
+        def sort_key(role: Role) -> tuple[int, int, str]:
+            # System roles first (in canonical order), then custom roles by name.
+            if role.company_id is None:
+                return (0, order.get(role.slug, 99), role.name)
+            return (1, 0, role.name)
+
+        return sorted(roles, key=sort_key)
 
     # --- helpers ---
-    def _system_role(self, slug: str) -> Role:
-        role = self.roles.get_system_role(slug)
+    def _assignable_role(self, slug: str) -> Role:
+        """Resolve a role by slug among system + this company's custom roles."""
+        role = self.db.scalars(
+            select(Role)
+            .where(
+                Role.slug == slug,
+                (Role.company_id.is_(None)) | (Role.company_id == self.company_id),
+            )
+            # Prefer a company role over a same-slug system role.
+            .order_by(Role.company_id.isnot(None).desc())
+        ).first()
         if role is None:
             raise BadRequest(f"Unknown role '{slug}'")
         return role
@@ -80,7 +106,7 @@ class UserAdminService:
         email = data.email.lower()
         if self.users.get_by_email(email) is not None:
             raise BadRequest(f"A user with email '{email}' already exists")
-        role = self._system_role(data.role_slug)
+        role = self._assignable_role(data.role_slug)
         user = User(
             company_id=self.company_id,
             email=email,
@@ -88,7 +114,7 @@ class UserAdminService:
             phone=data.phone,
             hashed_password=hash_password(data.password),
             status="active",
-            is_superuser=(data.role_slug == "admin"),
+            is_superuser=_is_admin_slug(data.role_slug),
         )
         user.roles = [role]
         self.db.add(user)
@@ -129,10 +155,10 @@ class UserAdminService:
                 self._revoke_sessions(user)
 
         if role_slug is not None:
-            role = self._system_role(role_slug)
+            role = self._assignable_role(role_slug)
             old["role"] = sorted(user.role_slugs)
             user.roles = [role]
-            user.is_superuser = role_slug == "admin"
+            user.is_superuser = _is_admin_slug(role_slug)
             changes["role"] = role_slug
 
         self.activity.record(

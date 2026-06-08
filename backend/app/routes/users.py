@@ -38,7 +38,7 @@ def list_users(
 
 @router.get("/roles", response_model=list[RoleRead])
 def list_roles(user: CurrentUser, db: DbSession) -> list[RoleRead]:
-    roles = UserAdminService(db, user).system_roles()
+    roles = UserAdminService(db, user).assignable_roles()
     return [RoleRead.from_role(r) for r in roles]
 
 

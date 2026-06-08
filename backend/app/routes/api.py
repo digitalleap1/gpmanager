@@ -13,7 +13,9 @@ from app.routes.notifications import router as notifications_router
 from app.routes.payments import router as payments_router
 from app.routes.projects import router as projects_router
 from app.routes.reports import router as reports_router
+from app.routes.roles import router as roles_router
 from app.routes.tasks import router as tasks_router
+from app.routes.teams import router as teams_router
 from app.routes.users import router as users_router
 from app.routes.websites import router as websites_router
 
@@ -32,6 +34,8 @@ api_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboar
 api_router.include_router(projects_router, prefix="/projects", tags=["projects"])
 api_router.include_router(lookups_router, prefix="/lookups", tags=["lookups"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
+api_router.include_router(teams_router, prefix="/teams", tags=["teams"])
+api_router.include_router(roles_router, prefix="/roles", tags=["roles"])
 api_router.include_router(guest_posts_router, prefix="/guest-posts", tags=["guest-posts"])
 api_router.include_router(websites_router, prefix="/websites", tags=["websites"])
 api_router.include_router(payments_router, prefix="/payments", tags=["payments"])

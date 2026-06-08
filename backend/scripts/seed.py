@@ -64,6 +64,8 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("activity_log.view", "activity_log", "View activity logs"),
     ("user.view", "user", "View users"),
     ("user.manage", "user", "Manage users & invitations"),
+    ("team.view", "team", "View teams"),
+    ("team.manage", "team", "Create & manage teams and membership"),
     ("role.manage", "role", "Manage roles & permissions"),
     ("settings.manage", "settings", "Manage system settings"),
 ]
@@ -80,7 +82,7 @@ ROLE_PERMISSIONS: dict[str, set[str] | str] = {
         "payment.view", "payment.create", "payment.update", "payment.manage",
         "task.view", "task.create", "task.update", "task.delete",
         "report.view", "report.export",
-        "notification.view", "activity_log.view", "user.view",
+        "notification.view", "activity_log.view", "user.view", "team.view",
     },
     "user": {
         "dashboard.view",

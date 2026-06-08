@@ -71,15 +71,10 @@ class UserCreate(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=1, max_length=160)
     password: str = Field(min_length=8, max_length=128)
+    # A system slug (admin/team_lead/user) or a company custom-role slug;
+    # validated against the company's assignable roles in the service layer.
     role_slug: str = "user"
     phone: str | None = Field(default=None, max_length=32)
-
-    @field_validator("role_slug")
-    @classmethod
-    def _role(cls, v: str) -> str:
-        if v not in ROLE_SLUGS:
-            raise ValueError(f"role_slug must be one of {sorted(ROLE_SLUGS)}")
-        return v
 
 
 class UserUpdate(BaseModel):
@@ -93,13 +88,6 @@ class UserUpdate(BaseModel):
     def _status(cls, v: str | None) -> str | None:
         if v is not None and v not in USER_STATUSES:
             raise ValueError(f"status must be one of {sorted(USER_STATUSES)}")
-        return v
-
-    @field_validator("role_slug")
-    @classmethod
-    def _role(cls, v: str | None) -> str | None:
-        if v is not None and v not in ROLE_SLUGS:
-            raise ValueError(f"role_slug must be one of {sorted(ROLE_SLUGS)}")
         return v
 
 
