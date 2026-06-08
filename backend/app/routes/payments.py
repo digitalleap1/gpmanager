@@ -11,6 +11,7 @@ from app.database.session import get_db
 from app.routes.deps import CurrentUser
 from app.schemas.common import Page
 from app.schemas.common_bulk import ImportResult
+from app.schemas.ledger import LedgerStats
 from app.schemas.payment import (
     PaymentCreate,
     PaymentDetail,
@@ -18,6 +19,7 @@ from app.schemas.payment import (
     PaymentStatusChange,
     PaymentUpdate,
 )
+from app.services.ledger import LedgerService
 from app.services.payment import PaymentService
 
 router = APIRouter()
@@ -62,6 +64,11 @@ def create_payment(body: PaymentCreate, user: CurrentUser, db: DbSession) -> Pay
 
 
 # Static paths must precede the dynamic /{payment_id} route.
+@router.get("/ledger-stats", response_model=LedgerStats)
+def ledger_stats(user: CurrentUser, db: DbSession) -> LedgerStats:
+    return LedgerService(db, user).stats()
+
+
 @router.get("/template")
 def payment_template(user: CurrentUser, format: str = "csv") -> Response:
     content, media, ext = PaymentService.template(format)
