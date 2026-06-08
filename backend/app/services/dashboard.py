@@ -45,7 +45,11 @@ class DashboardService:
         stmt = (
             select(func.count())
             .select_from(Project)
-            .where(Project.company_id == self.company_id, Project.is_archived.is_(False))
+            .where(
+                Project.company_id == self.company_id,
+                Project.is_archived.is_(False),
+                Project.deleted_at.is_(None),
+            )
         )
         if status:
             stmt = stmt.where(Project.status == status)
@@ -59,6 +63,7 @@ class DashboardService:
         pids, uids = self._scope()
 
         def scope_proj(stmt):
+            stmt = stmt.where(Project.deleted_at.is_(None))
             return stmt.where(Project.id.in_(pids)) if pids is not None else stmt
 
         total_target = (
@@ -120,7 +125,11 @@ class DashboardService:
 
         pending_stmt = select(
             func.count(), func.coalesce(func.sum(Payment.amount_usd), 0)
-        ).where(Payment.company_id == cid, Payment.status == "pending")
+        ).where(
+            Payment.company_id == cid,
+            Payment.deleted_at.is_(None),
+            Payment.status == "pending",
+        )
         if uids is not None:
             pending_stmt = pending_stmt.where(
                 or_(Payment.created_by.in_(uids), Payment.attributed_to_id.in_(uids))

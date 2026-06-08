@@ -48,6 +48,7 @@ class ClientService:
             .where(
                 Payment.company_id == self.company_id,
                 Payment.client_id.is_not(None),
+                Payment.deleted_at.is_(None),
                 Payment.status == "paid",
             )
             .group_by(Payment.client_id)
@@ -60,6 +61,7 @@ class ClientService:
             .where(
                 Payment.company_id == self.company_id,
                 Payment.client_id.is_not(None),
+                Payment.deleted_at.is_(None),
                 Payment.status == "pending",
             )
             .group_by(Payment.client_id)
@@ -69,7 +71,11 @@ class ClientService:
     def _payment_counts(self) -> dict[uuid.UUID, int]:
         rows = self.db.execute(
             select(Payment.client_id, func.count())
-            .where(Payment.company_id == self.company_id, Payment.client_id.is_not(None))
+            .where(
+                Payment.company_id == self.company_id,
+                Payment.client_id.is_not(None),
+                Payment.deleted_at.is_(None),
+            )
             .group_by(Payment.client_id)
         ).all()
         return {row[0]: int(row[1]) for row in rows}
@@ -78,7 +84,11 @@ class ClientService:
         """client_id -> (total, active, completed)."""
         rows = self.db.execute(
             select(Project.client_id, Project.status, func.count())
-            .where(Project.company_id == self.company_id, Project.client_id.is_not(None))
+            .where(
+                Project.company_id == self.company_id,
+                Project.client_id.is_not(None),
+                Project.deleted_at.is_(None),
+            )
             .group_by(Project.client_id, Project.status)
         ).all()
         out: dict[uuid.UUID, list[int]] = {}

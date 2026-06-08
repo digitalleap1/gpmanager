@@ -12,6 +12,7 @@ import {
   Link2,
   PauseCircle,
   Plus,
+  Route,
   Target,
   Upload,
   UserPlus,
@@ -157,13 +158,22 @@ export default function DashboardPage() {
       ) : summary ? (
         <div className="space-y-8">
           {/* Page intro */}
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-[#1A1F4D]">
-              Operations overview
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              A live snapshot of projects, links, payments, and your team.
-            </p>
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-bold tracking-tight text-[#1A1F4D]">
+                Operations overview
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A live snapshot of projects, links, payments, and your team.
+              </p>
+            </div>
+            <Link
+              href="/workflow"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-sm font-medium text-primary transition hover:bg-primary/10"
+            >
+              <Route className="h-4 w-4" />
+              New here? See the Workflow Guide
+            </Link>
           </div>
 
           {/* Quick actions */}

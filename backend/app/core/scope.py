@@ -48,6 +48,7 @@ def accessible_project_ids(db: Session, user: User) -> set[uuid.UUID] | None:
     member_sq = select(ProjectMember.project_id).where(ProjectMember.user_id.in_(users))
     stmt = select(Project.id).where(
         Project.company_id == user.company_id,
+        Project.deleted_at.is_(None),
         or_(
             Project.assignee_id.in_(users),
             Project.team_lead_id.in_(users),
