@@ -16,10 +16,9 @@ services:
     plan: free
     autoDeploy: true
     healthCheckPath: /api/health
-    # Runs before each deploy so the schema is migrated on release.
-    # (If your instance type doesn't support preDeploy, run it from the Render
-    #  Shell instead: `alembic upgrade head`.)
-    preDeployCommand: alembic upgrade head
+    # NOTE: migrations + seed run automatically at container startup (see
+    # backend/Dockerfile CMD), so no preDeploy hook or Render Shell is required —
+    # the free tier comes up fully provisioned (schema + admin/roles/permissions).
     envVars:
       - key: APP_ENV
         value: production

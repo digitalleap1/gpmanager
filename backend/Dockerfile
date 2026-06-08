@@ -23,6 +23,9 @@ COPY . .
 
 EXPOSE 8000
 
-# Default command. Binds to $PORT when the platform sets it (Render), else 8000.
+# On startup: apply DB migrations, seed roles/permissions/admin (idempotent), then
+# serve. Doing this at startup (rather than a preDeploy hook) means a free-tier
+# host with no shell/preDeploy still comes up fully provisioned. Binds to $PORT
+# when the platform sets it (Render), else 8000.
 # (docker-compose overrides this with --reload for local dev.)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "alembic upgrade head && python -m scripts.seed && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
