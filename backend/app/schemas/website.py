@@ -146,12 +146,6 @@ class WebsiteDetail(WebsiteListItem):
         )
 
 
-class ImportError(BaseModel):
-    row: int
-    message: str
-
-
-class ImportResult(BaseModel):
-    created: int
-    updated: int
-    errors: list[ImportError]
+# Bulk-import result DTOs now live in the shared module so every importer agrees.
+from app.schemas.common_bulk import ImportError as ImportError  # noqa: E402,F401
+from app.schemas.common_bulk import ImportResult as ImportResult  # noqa: E402,F401

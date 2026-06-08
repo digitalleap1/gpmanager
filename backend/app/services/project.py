@@ -6,19 +6,43 @@ from __future__ import annotations  # lazy annotations: the `list` method must n
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFound, PermissionDenied
+from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_admin, is_manager
+from app.models.lookups import Country, Niche
 from app.models.project import Project, ProjectMember
 from app.models.user import User
 from app.repositories.project import ProjectRepository
 from app.repositories.user import UserRepository
+from app.schemas.common_bulk import ImportResult
 from app.schemas.project import ProjectCreate, ProjectDetail, ProjectUpdate
 from app.services.activity import ActivityLogger, jsonable
 from app.services.assignment import ensure_assignable
+from app.services.bulk import (
+    normalize_format,
+    parse_date,
+    parse_number,
+    parse_table,
+)
+from app.services.bulk import run_row_imports
+from app.services.bulk import template as build_template
+from app.services.bulk import write_table
 from app.services.goal import GoalService
 from app.services.notification import Notifier
+
+PROJECT_STATUSES = {"active", "completed", "hold", "cancelled"}
+PROJECT_COLUMNS = [
+    "name", "main_niche", "project_niche", "target_country", "assignee",
+    "team_lead", "target_links", "monthly_budget", "goal", "due_date", "status",
+    "notes",
+]
+PROJECT_TEMPLATE_EXAMPLE = [
+    "Acme SaaS", "Technology", "SaaS", "US", "assignee@company.com",
+    "lead@company.com", "8", "1000", "2 guest posts / month", "2026-12-31",
+    "active", "Priority client",
+]
 
 
 class ProjectService:
@@ -209,3 +233,145 @@ class ProjectService:
         goals = goal_service.get_goals(project_id, year)
         budgets = goal_service.get_budgets(project_id, year)
         return ProjectDetail.build(p, current_year=year, goals=goals, budgets=budgets)
+
+    # --- bulk import / export (CSV + XLSX) ---
+    def _export_rows(self) -> list[list[object]]:
+        projects = self.db.scalars(
+            select(Project)
+            .where(Project.company_id == self.company_id)
+            .order_by(Project.name)
+        ).all()
+        return [
+            [
+                p.name,
+                p.main_niche.name if p.main_niche else "",
+                p.project_niche.name if p.project_niche else "",
+                p.target_country.iso_code if p.target_country else "",
+                p.assignee.email if p.assignee else "",
+                p.team_lead.email if p.team_lead else "",
+                p.target_links,
+                float(p.monthly_budget) if p.monthly_budget is not None else 0,
+                p.goal or "",
+                p.due_date.isoformat() if p.due_date else "",
+                p.status,
+                p.notes or "",
+            ]
+            for p in projects
+        ]
+
+    def export(self, fmt: str) -> tuple[bytes, str, str]:
+        if not is_manager(self.user):
+            raise PermissionDenied()
+        return write_table(PROJECT_COLUMNS, self._export_rows(), normalize_format(fmt))
+
+    @staticmethod
+    def template(fmt: str) -> tuple[bytes, str, str]:
+        return build_template(PROJECT_COLUMNS, PROJECT_TEMPLATE_EXAMPLE, normalize_format(fmt))
+
+    def import_file(self, filename: str, content: bytes) -> ImportResult:
+        if not is_manager(self.user):
+            raise PermissionDenied("Only managers can import projects")
+        rows = parse_table(filename, content)
+        if not rows:
+            raise BadRequest("The file has no data rows")
+        if "name" not in rows[0]:
+            raise BadRequest("File must include a 'name' column")
+        niches = {n.name.strip().lower(): n for n in self.db.scalars(select(Niche)).all()}
+        countries: dict[str, Country] = {}
+        for c in self.db.scalars(select(Country)).all():
+            countries[c.iso_code.lower()] = c
+            countries[c.name.lower()] = c
+        users = {
+            u.email.lower(): u
+            for u in self.db.scalars(
+                select(User).where(User.company_id == self.company_id)
+            ).all()
+        }
+        projects = {
+            p.name.strip().lower(): p
+            for p in self.db.scalars(
+                select(Project).where(Project.company_id == self.company_id)
+            ).all()
+        }
+        result = run_row_imports(
+            self.db,
+            rows,
+            lambda row: self._import_row(row, niches, countries, users, projects),
+        )
+        self.activity.record(
+            company_id=self.company_id,
+            user_id=self.user.id,
+            action="project.imported",
+            module="project",
+            entity_type="project",
+            entity_id=None,
+            new={
+                "created": result.created,
+                "updated": result.updated,
+                "errors": len(result.errors),
+            },
+        )
+        self.db.commit()
+        return result
+
+    def _import_row(self, row, niches, countries, users, projects) -> bool:
+        def cell(*names: str) -> str:
+            for name in names:
+                if name in row and row[name] != "":
+                    return row[name]
+            return ""
+
+        name = cell("name").strip()
+        if not name:
+            raise ValueError("name is required")
+        existing = projects.get(name.lower())
+        project = existing or Project(
+            company_id=self.company_id, created_by=self.user.id, name=name
+        )
+        if existing is None:
+            self.db.add(project)
+            projects[name.lower()] = project
+
+        if cell("main_niche"):
+            niche = niches.get(cell("main_niche").lower())
+            if niche is not None:
+                project.main_niche_id = niche.id
+        if cell("project_niche"):
+            niche = niches.get(cell("project_niche").lower())
+            if niche is not None:
+                project.project_niche_id = niche.id
+        if cell("target_country"):
+            country = countries.get(cell("target_country").lower())
+            if country is not None:
+                project.target_country_id = country.id
+        if cell("assignee"):
+            user = users.get(cell("assignee").lower())
+            if user is None:
+                raise ValueError(f"Unknown assignee '{cell('assignee')}'")
+            project.assignee_id = user.id
+        if cell("team_lead"):
+            user = users.get(cell("team_lead").lower())
+            if user is None:
+                raise ValueError(f"Unknown team lead '{cell('team_lead')}'")
+            project.team_lead_id = user.id
+
+        target_links = parse_number(cell("target_links"))
+        if target_links is not None:
+            project.target_links = int(target_links)
+        monthly_budget = parse_number(cell("monthly_budget"))
+        if monthly_budget is not None:
+            project.monthly_budget = monthly_budget
+        if cell("goal"):
+            project.goal = cell("goal")
+        due = parse_date(cell("due_date"))
+        if due is not None:
+            project.due_date = due
+        if cell("status"):
+            status = cell("status").lower()
+            if status not in PROJECT_STATUSES:
+                raise ValueError(f"Invalid status '{status}'")
+            project.status = status
+        if cell("notes"):
+            project.notes = cell("notes")
+        self.db.flush()
+        return existing is None

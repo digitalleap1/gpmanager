@@ -95,6 +95,28 @@ class PaymentRepository(BaseRepository[Payment]):
         items = self.db.scalars(stmt.offset(offset).limit(limit)).all()
         return items, total
 
+    def all_for_export(
+        self,
+        company_id: uuid.UUID,
+        *,
+        restrict_user_id: uuid.UUID | None = None,
+        project_id: uuid.UUID | None = None,
+        status: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        search: str | None = None,
+    ) -> Sequence[Payment]:
+        stmt = self._filtered(
+            company_id,
+            project_id=project_id,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+            search=search,
+            restrict_user_id=restrict_user_id,
+        ).order_by(Payment.created_at.asc())
+        return self.db.scalars(stmt).all()
+
     def pending_summary(self, company_id: uuid.UUID) -> tuple[int, float]:
         count = (
             self.db.scalar(

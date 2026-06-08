@@ -4,12 +4,13 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.routes.deps import CurrentUser
 from app.schemas.common import Page
+from app.schemas.common_bulk import ImportResult
 from app.schemas.payment import (
     PaymentCreate,
     PaymentDetail,
@@ -58,6 +59,51 @@ def list_payments(
 @router.post("", response_model=PaymentListItem, status_code=status.HTTP_201_CREATED)
 def create_payment(body: PaymentCreate, user: CurrentUser, db: DbSession) -> PaymentListItem:
     return PaymentListItem.from_payment(PaymentService(db, user).create(body))
+
+
+# Static paths must precede the dynamic /{payment_id} route.
+@router.get("/template")
+def payment_template(user: CurrentUser, format: str = "csv") -> Response:
+    content, media, ext = PaymentService.template(format)
+    return Response(
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename=payments-template.{ext}"},
+    )
+
+
+@router.get("/export")
+def export_payments(
+    user: CurrentUser,
+    db: DbSession,
+    format: str = "csv",
+    project_id: uuid.UUID | None = None,
+    status_: str | None = Query(None, alias="status"),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    search: str | None = None,
+) -> Response:
+    content, media, ext = PaymentService(db, user).export(
+        format,
+        project_id=project_id,
+        status=status_,
+        date_from=date_from,
+        date_to=date_to,
+        search=search,
+    )
+    return Response(
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename=payments.{ext}"},
+    )
+
+
+@router.post("/import", response_model=ImportResult)
+async def import_payments(
+    user: CurrentUser, db: DbSession, file: Annotated[UploadFile, File()]
+) -> ImportResult:
+    content = await file.read()
+    return PaymentService(db, user).import_file(file.filename or "upload.csv", content)
 
 
 @router.get("/{payment_id}", response_model=PaymentDetail)

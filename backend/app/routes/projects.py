@@ -4,12 +4,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, File, Path, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.routes.deps import CurrentUser
 from app.schemas.common import Page
+from app.schemas.common_bulk import ImportResult
 from app.schemas.goal import BudgetSet, GoalSet, MonthlyBudgetRead, MonthlyGoalRead
 from app.schemas.project import (
     ArchiveRequest,
@@ -71,6 +72,35 @@ def list_projects(
 def create_project(body: ProjectCreate, user: CurrentUser, db: DbSession) -> ProjectListItem:
     project = ProjectService(db, user).create(body)
     return ProjectListItem.from_project(project)
+
+
+# Static paths must precede the dynamic /{project_id} route.
+@router.get("/template")
+def project_template(user: CurrentUser, format: str = "csv") -> Response:
+    content, media, ext = ProjectService.template(format)
+    return Response(
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename=projects-template.{ext}"},
+    )
+
+
+@router.get("/export")
+def export_projects(user: CurrentUser, db: DbSession, format: str = "csv") -> Response:
+    content, media, ext = ProjectService(db, user).export(format)
+    return Response(
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename=projects.{ext}"},
+    )
+
+
+@router.post("/import", response_model=ImportResult)
+async def import_projects(
+    user: CurrentUser, db: DbSession, file: Annotated[UploadFile, File()]
+) -> ImportResult:
+    content = await file.read()
+    return ProjectService(db, user).import_file(file.filename or "upload.csv", content)
 
 
 @router.get("/{project_id}", response_model=ProjectDetail)

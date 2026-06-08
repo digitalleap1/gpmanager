@@ -2,8 +2,6 @@
 
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
-import csv
-import io
 import uuid
 
 from sqlalchemy import select
@@ -15,19 +13,25 @@ from app.models.lookups import Country, Language, Niche
 from app.models.user import User
 from app.models.website import Website, WebsiteContact
 from app.repositories.website import WebsiteRepository
-from app.schemas.website import (
-    ContactCreate,
-    ImportError as ImportErrorRow,
-    ImportResult,
-    WebsiteCreate,
-    WebsiteUpdate,
-)
+from app.schemas.common_bulk import ImportError as ImportErrorRow
+from app.schemas.common_bulk import ImportResult
+from app.schemas.website import ContactCreate, WebsiteCreate, WebsiteUpdate
 from app.services.activity import ActivityLogger, jsonable
+from app.services.bulk import normalize_format, parse_table
+from app.services.bulk import template as build_template
+from app.services.bulk import write_table
 
 CSV_COLUMNS = [
     "domain", "name", "main_niche", "country", "language", "traffic", "da", "dr",
     "spam_score", "price", "email", "contact_person", "guest_post_available",
     "link_insertion_available", "homepage_url", "notes",
+]
+
+# One example row so a freshly downloaded template shows the expected shape.
+TEMPLATE_EXAMPLE = [
+    "example.com", "Example Blog", "Technology", "US", "English", "50000", "45",
+    "50", "2", "120", "editor@example.com", "Jane Editor", "true", "false",
+    "https://example.com", "High-quality tech blog",
 ]
 
 _TRUE = {"1", "true", "yes", "y", "t"}
@@ -157,44 +161,44 @@ class WebsiteService:
         self.db.delete(contact)
         self.db.commit()
 
-    # --- CSV ---
-    def export_csv(self, **filters) -> str:
+    # --- bulk import / export (CSV + XLSX) ---
+    def _export_rows(self, **filters) -> list[list[object]]:
         rows = self.websites.all_for_export(self.company_id, **filters)
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(CSV_COLUMNS)
-        for w in rows:
-            writer.writerow(
-                [
-                    w.domain,
-                    w.name or "",
-                    w.main_niche.name if w.main_niche else "",
-                    w.country.iso_code if w.country else "",
-                    w.language.iso_code if w.language else "",
-                    "" if w.traffic is None else w.traffic,
-                    "" if w.da is None else w.da,
-                    "" if w.dr is None else w.dr,
-                    "" if w.spam_score is None else w.spam_score,
-                    "" if w.price is None else float(w.price),
-                    w.email or "",
-                    w.contact_person or "",
-                    "true" if w.guest_post_available else "false",
-                    "true" if w.link_insertion_available else "false",
-                    w.homepage_url or "",
-                    w.notes or "",
-                ]
-            )
-        return buf.getvalue()
+        return [
+            [
+                w.domain,
+                w.name or "",
+                w.main_niche.name if w.main_niche else "",
+                w.country.iso_code if w.country else "",
+                w.language.iso_code if w.language else "",
+                "" if w.traffic is None else w.traffic,
+                "" if w.da is None else w.da,
+                "" if w.dr is None else w.dr,
+                "" if w.spam_score is None else w.spam_score,
+                "" if w.price is None else float(w.price),
+                w.email or "",
+                w.contact_person or "",
+                "true" if w.guest_post_available else "false",
+                "true" if w.link_insertion_available else "false",
+                w.homepage_url or "",
+                w.notes or "",
+            ]
+            for w in rows
+        ]
 
-    def import_csv(self, content: bytes) -> ImportResult:
-        try:
-            text = content.decode("utf-8-sig")
-        except UnicodeDecodeError as exc:
-            raise BadRequest("File must be UTF-8 encoded CSV") from exc
-        reader = csv.DictReader(io.StringIO(text))
-        headers = [(h or "").strip().lower() for h in (reader.fieldnames or [])]
-        if "domain" not in headers:
-            raise BadRequest("CSV must include a 'domain' column")
+    def export(self, fmt: str, **filters) -> tuple[bytes, str, str]:
+        return write_table(CSV_COLUMNS, self._export_rows(**filters), normalize_format(fmt))
+
+    @staticmethod
+    def template(fmt: str) -> tuple[bytes, str, str]:
+        return build_template(CSV_COLUMNS, TEMPLATE_EXAMPLE, normalize_format(fmt))
+
+    def import_file(self, filename: str, content: bytes) -> ImportResult:
+        rows = parse_table(filename, content)
+        if not rows:
+            raise BadRequest("The file has no data rows")
+        if "domain" not in rows[0]:
+            raise BadRequest("File must include a 'domain' column")
 
         niches = {n.name.lower(): n for n in self.db.scalars(select(Niche)).all()}
         countries = self.db.scalars(select(Country)).all()
@@ -207,8 +211,7 @@ class WebsiteService:
         created = 0
         updated = 0
         errors: list[ImportErrorRow] = []
-        for i, raw in enumerate(reader, start=2):  # header is row 1
-            row = {(k or "").strip().lower(): (v or "") for k, v in raw.items()}
+        for i, row in enumerate(rows, start=2):  # header is row 1
             try:
                 was_created = self._upsert_row(row, niches, c_iso, c_name, l_iso, l_name)
                 if was_created:

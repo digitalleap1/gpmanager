@@ -8,18 +8,43 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFound, PermissionDenied
+from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
+from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_admin, is_manager
 from app.models.payment import Payment, PaymentStatusHistory
-from app.models.project import ProjectMonthlyBudget
+from app.models.project import Project, ProjectMonthlyBudget
 from app.models.user import User
+from app.models.website import Website
 from app.repositories.payment import PaymentRepository
 from app.repositories.project import BudgetRepository
-from app.schemas.payment import PaymentCreate, PaymentUpdate
+from app.schemas.common_bulk import ImportResult
+from app.schemas.payment import PAYMENT_STATUSES, PaymentCreate, PaymentUpdate
 from app.services.activity import ActivityLogger, jsonable
+from app.services.bulk import (
+    normalize_format,
+    parse_bool,
+    parse_date,
+    parse_number,
+    parse_table,
+)
+from app.services.bulk import run_row_imports
+from app.services.bulk import template as build_template
+from app.services.bulk import write_table
 from app.services.notification import Notifier
+
+# Import/export template columns (also the round-trip export shape).
+PAYMENT_COLUMNS = [
+    "project", "website", "live_link", "currency", "amount", "fx_to_usd",
+    "mode_of_payment", "payment_date", "transaction_id", "status", "remarks",
+    "notified",
+]
+PAYMENT_TEMPLATE_EXAMPLE = [
+    "Acme SaaS", "example.com", "https://blog.example.com/guest-post", "USD", "50",
+    "", "PayPal", "2026-03-15", "INV-1029", "paid", "Tier 1 link", "true",
+]
 
 
 class PaymentService:
@@ -234,3 +259,127 @@ class PaymentService:
                 "project_id": str(p.project_id) if p.project_id else None,
             },
         )
+
+    # --- bulk import / export (CSV + XLSX) ---
+    def _export_rows(self, **filters) -> list[list[object]]:
+        rows = self.payments.all_for_export(
+            self.company_id, restrict_user_id=self._restrict_user_id(), **filters
+        )
+        return [
+            [
+                p.project.name if p.project else "",
+                p.website.domain if p.website else "",
+                p.live_link or "",
+                p.currency or "USD",
+                "" if p.amount is None else float(p.amount),
+                "" if p.fx_to_usd is None else float(p.fx_to_usd),
+                p.mode_of_payment or "",
+                p.payment_date.isoformat() if p.payment_date else "",
+                p.transaction_id or "",
+                p.status,
+                p.remarks or "",
+                "true" if p.notified else "false",
+            ]
+            for p in rows
+        ]
+
+    def export(self, fmt: str, **filters) -> tuple[bytes, str, str]:
+        return write_table(PAYMENT_COLUMNS, self._export_rows(**filters), normalize_format(fmt))
+
+    @staticmethod
+    def template(fmt: str) -> tuple[bytes, str, str]:
+        return build_template(PAYMENT_COLUMNS, PAYMENT_TEMPLATE_EXAMPLE, normalize_format(fmt))
+
+    def import_file(self, filename: str, content: bytes) -> ImportResult:
+        if not is_manager(self.user):
+            raise PermissionDenied("Only managers can import payments")
+        rows = parse_table(filename, content)
+        if not rows:
+            raise BadRequest("The file has no data rows")
+        projects = {
+            p.name.strip().lower(): p
+            for p in self.db.scalars(
+                select(Project).where(Project.company_id == self.company_id)
+            ).all()
+        }
+        websites = {
+            w.domain.strip().lower(): w
+            for w in self.db.scalars(
+                select(Website).where(Website.company_id == self.company_id)
+            ).all()
+        }
+        result = run_row_imports(
+            self.db, rows, lambda row: self._import_row(row, projects, websites)
+        )
+        self.activity.record(
+            company_id=self.company_id,
+            user_id=self.user.id,
+            action="payment.imported",
+            module="payment",
+            entity_type="payment",
+            entity_id=None,
+            new={"created": result.created, "errors": len(result.errors)},
+        )
+        self.db.commit()
+        return result
+
+    def _import_row(self, row: dict, projects: dict, websites: dict) -> bool:
+        def cell(*names: str) -> str:
+            for name in names:
+                if name in row and row[name] != "":
+                    return row[name]
+            return ""
+
+        project_name = cell("project", "project_name").strip()
+        project = projects.get(project_name.lower()) if project_name else None
+        if project_name and project is None:
+            raise ValueError(f"Unknown project '{project_name}'")
+
+        domain = cell("website", "website_domain", "domain").strip().lower()
+        website = websites.get(domain) if domain else None
+        if domain and website is None:
+            raise ValueError(f"Unknown website '{domain}'")
+
+        currency = (cell("currency") or DEFAULT_CURRENCY).upper()
+        if currency not in CURRENCY_CODES:
+            raise ValueError(f"Unsupported currency '{currency}'")
+        status = (cell("status") or "pending").lower()
+        if status not in PAYMENT_STATUSES:
+            raise ValueError(f"Invalid status '{status}'")
+
+        payload = self._normalize_money(
+            {
+                "currency": currency,
+                "amount": parse_number(cell("amount")),
+                "fx_to_usd": parse_number(cell("fx_to_usd", "rate")),
+            }
+        )
+        payment = Payment(
+            company_id=self.company_id,
+            created_by=self.user.id,
+            project_id=project.id if project else None,
+            website_id=website.id if website else None,
+            live_link=cell("live_link", "live link") or None,
+            currency=payload["currency"],
+            amount=payload.get("amount"),
+            fx_to_usd=payload.get("fx_to_usd"),
+            amount_usd=payload.get("amount_usd"),
+            mode_of_payment=cell("mode_of_payment", "mode") or None,
+            payment_date=parse_date(cell("payment_date", "date")),
+            transaction_id=cell("transaction_id", "txn") or None,
+            remarks=cell("remarks", "notes") or None,
+            status=status,
+            notified=parse_bool(cell("notified")),
+        )
+        self.db.add(payment)
+        self.db.flush()
+        self.db.add(
+            PaymentStatusHistory(
+                payment_id=payment.id,
+                from_status=None,
+                to_status=status,
+                changed_by=self.user.id,
+                note="imported",
+            )
+        )
+        return True

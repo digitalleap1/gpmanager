@@ -68,10 +68,21 @@ def create_website(body: WebsiteCreate, user: CurrentUser, db: DbSession) -> Web
 
 
 # Static paths must precede the dynamic /{website_id} route.
+@router.get("/template")
+def website_template(user: CurrentUser, format: str = "csv") -> Response:
+    content, media, ext = WebsiteService.template(format)
+    return Response(
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename=websites-template.{ext}"},
+    )
+
+
 @router.get("/export")
 def export_websites(
     user: CurrentUser,
     db: DbSession,
+    format: str = "csv",
     search: str | None = None,
     country_id: int | None = None,
     niche_id: int | None = None,
@@ -81,7 +92,8 @@ def export_websites(
     max_price: float | None = None,
     guest_post_available: bool | None = None,
 ) -> Response:
-    csv_text = WebsiteService(db, user).export_csv(
+    content, media, ext = WebsiteService(db, user).export(
+        format,
         search=search,
         country_id=country_id,
         niche_id=niche_id,
@@ -92,9 +104,9 @@ def export_websites(
         guest_post_available=guest_post_available,
     )
     return Response(
-        content=csv_text,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=websites.csv"},
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": f"attachment; filename=websites.{ext}"},
     )
 
 
@@ -103,7 +115,7 @@ async def import_websites(
     user: CurrentUser, db: DbSession, file: Annotated[UploadFile, File()]
 ) -> ImportResult:
     content = await file.read()
-    return WebsiteService(db, user).import_csv(content)
+    return WebsiteService(db, user).import_file(file.filename or "upload.csv", content)
 
 
 @router.get("/{website_id}", response_model=WebsiteDetail)
