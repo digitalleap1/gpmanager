@@ -50,6 +50,51 @@ class Notifier:
             )
         )
 
+    def notify_many(
+        self,
+        user_ids: set[uuid.UUID] | list[uuid.UUID],
+        *,
+        company_id: uuid.UUID,
+        type: str,
+        title: str,
+        body: str | None = None,
+        entity_type: str | None = None,
+        entity_id: uuid.UUID | None = None,
+    ) -> None:
+        for uid in set(user_ids):
+            self.notify(
+                company_id=company_id, user_id=uid, type=type, title=title,
+                body=body, entity_type=entity_type, entity_id=entity_id,
+            )
+
+    def notify_admins(
+        self,
+        *,
+        company_id: uuid.UUID,
+        type: str,
+        title: str,
+        body: str | None = None,
+        entity_type: str | None = None,
+        entity_id: uuid.UUID | None = None,
+        exclude: uuid.UUID | None = None,
+    ) -> None:
+        """Notify every active admin (oversight of everyone's actions).
+
+        ``exclude`` skips the actor so an admin isn't notified of their own action.
+        """
+        admins = self.db.scalars(
+            select(User).where(User.company_id == company_id, User.status == "active")
+        ).all()
+        admin_ids = {
+            u.id
+            for u in admins
+            if (u.is_superuser or "admin" in u.role_slugs) and u.id != exclude
+        }
+        self.notify_many(
+            admin_ids, company_id=company_id, type=type, title=title, body=body,
+            entity_type=entity_type, entity_id=entity_id,
+        )
+
 
 class NotificationService:
     def __init__(self, db: Session, user: User) -> None:

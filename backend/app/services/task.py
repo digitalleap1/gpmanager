@@ -75,8 +75,9 @@ class TaskService:
             entity_id=t.id,
             new={"name": t.name, "assigned_to": str(t.assigned_to) if t.assigned_to else None},
         )
+        notifier = Notifier(self.db)
         if t.assigned_to:
-            Notifier(self.db).notify(
+            notifier.notify(
                 company_id=self.company_id,
                 user_id=t.assigned_to,
                 type="task_assigned",
@@ -85,6 +86,15 @@ class TaskService:
                 entity_type="task",
                 entity_id=t.id,
             )
+        notifier.notify_admins(
+            company_id=self.company_id,
+            type="task_created",
+            title="Task created",
+            body=f"{self.user.full_name} created the task '{t.name}'.",
+            entity_type="task",
+            entity_id=t.id,
+            exclude=self.user.id,
+        )
         self.db.commit()
         self.db.refresh(t)
         return t
@@ -135,6 +145,15 @@ class TaskService:
                 entity_id=t.id,
                 new={"name": t.name},
             )
+            Notifier(self.db).notify_admins(
+                company_id=self.company_id,
+                type="task_completed",
+                title="Task completed",
+                body=f"{self.user.full_name} completed the task '{t.name}'.",
+                entity_type="task",
+                entity_id=t.id,
+                exclude=self.user.id,
+            )
             self.db.commit()
             self.db.refresh(t)
         return t
@@ -179,6 +198,14 @@ class TaskService:
                 type="task_overdue",
                 title="Task overdue",
                 body=f"The task '{t.name}' is past its due date.",
+                entity_type="task",
+                entity_id=t.id,
+            )
+            notifier.notify_admins(
+                company_id=self.company_id,
+                type="task_overdue",
+                title="Task overdue",
+                body=f"'{t.name}' is past its due date and not completed.",
                 entity_type="task",
                 entity_id=t.id,
             )

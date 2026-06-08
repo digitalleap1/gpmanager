@@ -96,8 +96,9 @@ class ProjectService:
             entity_id=p.id,
             new={"name": p.name},
         )
+        notifier = Notifier(self.db)
         if p.assignee_id:
-            Notifier(self.db).notify(
+            notifier.notify(
                 company_id=self.company_id,
                 user_id=p.assignee_id,
                 type="project_assigned",
@@ -106,6 +107,15 @@ class ProjectService:
                 entity_type="project",
                 entity_id=p.id,
             )
+        notifier.notify_admins(
+            company_id=self.company_id,
+            type="project_created",
+            title="Project created",
+            body=f"{self.user.full_name} created the project '{p.name}'.",
+            entity_type="project",
+            entity_id=p.id,
+            exclude=self.user.id,
+        )
         self.db.commit()
         self.db.refresh(p)
         return p

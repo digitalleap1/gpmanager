@@ -136,6 +136,15 @@ class PaymentService:
                 "status": p.status,
             },
         )
+        Notifier(self.db).notify_admins(
+            company_id=self.company_id,
+            type="payment_created",
+            title="Payment recorded",
+            body=f"{self.user.full_name} recorded a payment ({p.status}).",
+            entity_type="payment",
+            entity_id=p.id,
+            exclude=self.user.id,
+        )
         self.db.commit()
         self.db.refresh(p)
         return p
@@ -221,6 +230,16 @@ class PaymentService:
                 entity_id=p.id,
                 new={"from": old, "to": new_status},
             )
+        # Oversight: every payment status change pings the admins.
+        Notifier(self.db).notify_admins(
+            company_id=self.company_id,
+            type="payment_status",
+            title=f"Payment marked {new_status}",
+            body=f"{self.user.full_name} changed a payment from '{old}' to '{new_status}'.",
+            entity_type="payment",
+            entity_id=p.id,
+            exclude=self.user.id,
+        )
 
     def _on_paid(self, p: Payment) -> None:
         """Automation: add the paid amount to the project's monthly spent budget."""
