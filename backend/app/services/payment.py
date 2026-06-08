@@ -6,6 +6,7 @@ from __future__ import annotations  # lazy annotations: the `list` method must n
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -50,8 +51,39 @@ class PaymentService:
             raise NotFound("Payment not found")
         return p
 
+    def _normalize_money(self, payload: dict, existing: Payment | None = None) -> dict:
+        """Derive amount_usd from native amount * fx_to_usd (USD => rate 1).
+
+        Only recomputes when a money field is part of ``payload``; otherwise the
+        posted ``amount_usd`` is left untouched (back-compat with older clients).
+        """
+        if not any(k in payload for k in ("amount", "currency", "fx_to_usd")):
+            return payload
+
+        def merged(key: str):
+            if key in payload:
+                return payload[key]
+            if existing is None:
+                return None
+            val = getattr(existing, key)
+            return float(val) if isinstance(val, Decimal) else val
+
+        currency = (merged("currency") or "USD").upper()
+        amount = merged("amount")
+        fx = merged("fx_to_usd")
+        payload["currency"] = currency
+        if amount is not None:
+            if currency == "USD":
+                payload["fx_to_usd"] = 1.0
+                payload["amount_usd"] = round(float(amount), 2)
+            elif fx is not None:
+                payload["fx_to_usd"] = fx
+                payload["amount_usd"] = round(float(amount) * float(fx), 2)
+        return payload
+
     def create(self, data: PaymentCreate) -> Payment:
-        p = Payment(company_id=self.company_id, created_by=self.user.id, **data.model_dump())
+        payload = self._normalize_money(data.model_dump())
+        p = Payment(company_id=self.company_id, created_by=self.user.id, **payload)
         self.payments.add(p)
         self.db.add(
             PaymentStatusHistory(
@@ -71,7 +103,11 @@ class PaymentService:
             module="payment",
             entity_type="payment",
             entity_id=p.id,
-            new={"amount_usd": data.amount_usd, "status": p.status},
+            new={
+                "amount_usd": payload.get("amount_usd"),
+                "currency": payload.get("currency"),
+                "status": p.status,
+            },
         )
         self.db.commit()
         self.db.refresh(p)
@@ -83,6 +119,7 @@ class PaymentService:
             raise PermissionDenied()
         changes = data.model_dump(exclude_unset=True)
         new_status = changes.pop("status", None)
+        changes = self._normalize_money(changes, existing=p)
         old = {key: getattr(p, key) for key in changes}
         for key, value in changes.items():
             setattr(p, key, value)

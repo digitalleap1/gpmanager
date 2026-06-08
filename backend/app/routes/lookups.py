@@ -3,8 +3,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.currencies import CURRENCIES
 from app.database.session import get_db
 from app.repositories.lookup import CountryRepository, LanguageRepository, NicheRepository
 from app.routes.deps import CurrentUser
@@ -13,6 +15,17 @@ from app.schemas.lookup import CountryRead, LanguageRead, NicheRead
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+class CurrencyRead(BaseModel):
+    code: str
+    symbol: str
+    name: str
+
+
+@router.get("/currencies", response_model=list[CurrencyRead])
+def list_currencies(user: CurrentUser) -> list[CurrencyRead]:
+    return [CurrencyRead(code=c, symbol=s, name=n) for c, s, n in CURRENCIES]
 
 
 @router.get("/countries", response_model=list[CountryRead])

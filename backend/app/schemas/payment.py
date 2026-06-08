@@ -7,6 +7,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
 from app.models.payment import Payment, PaymentStatusHistory
 from app.schemas.refs import UserRef
 
@@ -19,13 +20,29 @@ def _validate_status(value: str) -> str:
     return value
 
 
+def _validate_currency(value: str | None) -> str | None:
+    if value is None:
+        return None
+    code = value.upper()
+    if code not in CURRENCY_CODES:
+        raise ValueError(f"currency must be one of {sorted(CURRENCY_CODES)}")
+    return code
+
+
 class PaymentCreate(BaseModel):
     project_id: uuid.UUID | None = None
     website_id: uuid.UUID | None = None
     guest_post_id: uuid.UUID | None = None
     live_link: str | None = Field(default=None, max_length=700)
+    # Native charge currency + amount, plus a manual rate to USD. amount_usd is
+    # derived from amount * fx_to_usd when amount is given (else taken as posted).
+    currency: str = DEFAULT_CURRENCY
+    amount: float | None = Field(default=None, ge=0)
+    fx_to_usd: float | None = Field(default=None, gt=0)
     amount_usd: float | None = Field(default=None, ge=0)
     amount_inr: float | None = Field(default=None, ge=0)
+    mode_of_payment: str | None = Field(default=None, max_length=60)
+    notified: bool = False
     invoice_link: str | None = Field(default=None, max_length=700)
     payment_date: date | None = None
     transaction_id: str | None = Field(default=None, max_length=120)
@@ -37,14 +54,24 @@ class PaymentCreate(BaseModel):
     def _status(cls, value: str) -> str:
         return _validate_status(value)
 
+    @field_validator("currency")
+    @classmethod
+    def _currency(cls, value: str) -> str:
+        return _validate_currency(value) or DEFAULT_CURRENCY
+
 
 class PaymentUpdate(BaseModel):
     project_id: uuid.UUID | None = None
     website_id: uuid.UUID | None = None
     guest_post_id: uuid.UUID | None = None
     live_link: str | None = Field(default=None, max_length=700)
+    currency: str | None = None
+    amount: float | None = Field(default=None, ge=0)
+    fx_to_usd: float | None = Field(default=None, gt=0)
     amount_usd: float | None = Field(default=None, ge=0)
     amount_inr: float | None = Field(default=None, ge=0)
+    mode_of_payment: str | None = Field(default=None, max_length=60)
+    notified: bool | None = None
     invoice_link: str | None = Field(default=None, max_length=700)
     payment_date: date | None = None
     transaction_id: str | None = Field(default=None, max_length=120)
@@ -55,6 +82,11 @@ class PaymentUpdate(BaseModel):
     @classmethod
     def _status(cls, value: str | None) -> str | None:
         return _validate_status(value) if value is not None else None
+
+    @field_validator("currency")
+    @classmethod
+    def _currency(cls, value: str | None) -> str | None:
+        return _validate_currency(value)
 
 
 class PaymentStatusChange(BaseModel):
@@ -93,8 +125,13 @@ class PaymentListItem(BaseModel):
     website_id: uuid.UUID | None
     website_domain: str | None
     live_link: str | None
+    currency: str
+    amount: float | None
+    fx_to_usd: float | None
     amount_usd: float | None
     amount_inr: float | None
+    mode_of_payment: str | None
+    notified: bool
     invoice_link: str | None
     payment_date: date | None
     transaction_id: str | None
@@ -112,8 +149,13 @@ class PaymentListItem(BaseModel):
             website_id=p.website_id,
             website_domain=p.website.domain if p.website else None,
             live_link=p.live_link,
+            currency=p.currency or "USD",
+            amount=float(p.amount) if p.amount is not None else None,
+            fx_to_usd=float(p.fx_to_usd) if p.fx_to_usd is not None else None,
             amount_usd=float(p.amount_usd) if p.amount_usd is not None else None,
             amount_inr=float(p.amount_inr) if p.amount_inr is not None else None,
+            mode_of_payment=p.mode_of_payment,
+            notified=p.notified,
             invoice_link=p.invoice_link,
             payment_date=p.payment_date,
             transaction_id=p.transaction_id,

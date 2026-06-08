@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -31,8 +31,16 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("guest_posts.id", ondelete="SET NULL")
     )
     live_link: Mapped[str | None] = mapped_column(String(700))
+    # Native charge currency + manual FX rate -> USD; amount_usd is the derived
+    # canonical (USD) value used by dashboards/reports. amount_inr is retained
+    # for back-compat with existing rows/clients.
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    fx_to_usd: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     amount_inr: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    mode_of_payment: Mapped[str | None] = mapped_column(String(60))
+    notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     invoice_link: Mapped[str | None] = mapped_column(String(700))
     payment_date: Mapped[date | None] = mapped_column(Date)
     transaction_id: Mapped[str | None] = mapped_column(String(120))
