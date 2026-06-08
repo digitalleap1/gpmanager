@@ -73,6 +73,95 @@ export interface MessageResponse {
 }
 
 /* ------------------------------------------------------------------ *
+ * Phase 1 RBAC (Teams + Roles & Permissions) types
+ * ------------------------------------------------------------------ */
+
+/** A team row as returned by `GET /teams`. */
+export interface TeamListItem {
+  id: string;
+  name: string;
+  description: string | null;
+  team_lead: UserSummary | null;
+  member_count: number;
+  created_at: string;
+}
+
+/** Full team record (`GET /teams/{id}`, plus create/update/member responses). */
+export interface TeamRead extends TeamListItem {
+  members: UserSummary[];
+}
+
+/** A team node within the org hierarchy. */
+export interface HierarchyTeam {
+  id: string;
+  name: string;
+  team_lead: UserSummary | null;
+  members: UserSummary[];
+}
+
+/** Org-chart payload returned by `GET /teams/hierarchy`. */
+export interface OrgHierarchy {
+  admins: UserSummary[];
+  teams: HierarchyTeam[];
+  unassigned: UserSummary[];
+}
+
+/** Body for `POST /teams`. */
+export interface TeamCreate {
+  name: string;
+  description?: string | null;
+  team_lead_id?: string | null;
+  member_ids?: string[];
+}
+
+/** Body for `PATCH /teams/{id}` — every field optional. */
+export interface TeamUpdate {
+  name?: string;
+  description?: string | null;
+  team_lead_id?: string | null;
+}
+
+/** A single permission descriptor. */
+export interface PermissionItem {
+  code: string;
+  module: string;
+  description: string | null;
+}
+
+/** Permissions grouped by module (`GET /roles/permissions`). */
+export interface PermissionGroup {
+  module: string;
+  permissions: PermissionItem[];
+}
+
+/** Full role record returned by the `/roles` endpoints. */
+export interface RoleDetail {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  scope: string;
+  is_system: boolean;
+  editable: boolean;
+  permission_codes: string[];
+  user_count: number;
+}
+
+/** Body for `POST /roles`. */
+export interface RoleCreate {
+  name: string;
+  description?: string | null;
+  permission_codes: string[];
+}
+
+/** Body for `PATCH /roles/{id}` — every field optional. */
+export interface RoleUpdate {
+  name?: string;
+  description?: string | null;
+  permission_codes?: string[];
+}
+
+/* ------------------------------------------------------------------ *
  * Module 2 (Dashboard) + Module 3 (Projects) types
  * ------------------------------------------------------------------ */
 

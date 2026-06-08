@@ -10,8 +10,10 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ShieldCheck,
   User as UserIcon,
   Users,
+  UsersRound,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -39,6 +41,13 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/users", label: "Users", icon: Users, adminOnly: true },
+  { href: "/teams", label: "Teams", icon: UsersRound, adminOnly: true },
+  {
+    href: "/roles",
+    label: "Roles & Permissions",
+    icon: ShieldCheck,
+    adminOnly: true,
+  },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ];
 
