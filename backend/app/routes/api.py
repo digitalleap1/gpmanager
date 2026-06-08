@@ -4,6 +4,7 @@
 
 from fastapi import APIRouter
 
+from app.routes.audit import router as audit_router
 from app.routes.auth import router as auth_router
 from app.routes.clients import router as clients_router
 from app.routes.dashboard import router as dashboard_router
@@ -18,6 +19,7 @@ from app.routes.reports import router as reports_router
 from app.routes.roles import router as roles_router
 from app.routes.tasks import router as tasks_router
 from app.routes.teams import router as teams_router
+from app.routes.trash import router as trash_router
 from app.routes.users import router as users_router
 from app.routes.websites import router as websites_router
 
@@ -45,6 +47,8 @@ api_router.include_router(payments_router, prefix="/payments", tags=["payments"]
 api_router.include_router(tasks_router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(reports_router, prefix="/reports", tags=["reports"])
+api_router.include_router(audit_router, prefix="/audit-logs", tags=["audit"])
+api_router.include_router(trash_router, prefix="/trash", tags=["trash"])
 api_router.include_router(integrations_router, prefix="/integrations", tags=["integrations"])
 api_router.include_router(imports_router, prefix="/imports", tags=["imports"])
 # from app.routes.guest_posts import router as guest_posts_router

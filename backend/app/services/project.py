@@ -5,12 +5,13 @@ company; regular users only see projects they're assignee, team lead, or member 
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
-from app.core.permissions import is_admin, is_manager
+from app.core.permissions import is_manager
 from app.core.scope import accessible_user_ids
 from app.models.lookups import Country, Niche
 from app.models.project import Project, ProjectMember
@@ -206,9 +207,12 @@ class ProjectService:
         return updated, skipped
 
     def delete(self, project_id: uuid.UUID) -> None:
-        if not is_admin(self.user):
-            raise PermissionDenied("Only admins can delete projects")
+        if not is_manager(self.user):
+            raise PermissionDenied("Only managers can delete projects")
         p = self.get(project_id)
+        # Soft-delete: move to Trash (reversible) instead of removing.
+        p.deleted_at = datetime.now(timezone.utc)
+        p.deleted_by = self.user.id
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,
@@ -218,7 +222,6 @@ class ProjectService:
             entity_id=p.id,
             old={"name": p.name},
         )
-        self.projects.delete(p)
         self.db.commit()
 
     def set_archived(self, project_id: uuid.UUID, archived: bool) -> Project:

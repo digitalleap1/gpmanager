@@ -8,12 +8,13 @@ correct. Managers read; managers create/update; admins delete.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
-from app.core.permissions import is_admin, is_manager
+from app.core.permissions import is_manager
 from app.core.scope import accessible_user_ids
 from app.models.client import Client
 from app.models.payment import Payment
@@ -110,7 +111,9 @@ class ClientService:
     # --- reads ---
     def list(self) -> list[ClientListItem]:
         self._require_manager()
-        stmt = select(Client).where(Client.company_id == self.company_id)
+        stmt = select(Client).where(
+            Client.company_id == self.company_id, Client.deleted_at.is_(None)
+        )
         scope = accessible_user_ids(self.db, self.user)
         if scope is not None:
             # Non-admins see only clients they created or that hold a payment they
@@ -153,7 +156,11 @@ class ClientService:
 
     def _get(self, client_id: uuid.UUID) -> Client:
         client = self.db.get(Client, client_id)
-        if client is None or client.company_id != self.company_id:
+        if (
+            client is None
+            or client.company_id != self.company_id
+            or client.deleted_at is not None
+        ):
             raise NotFound("Client not found")
         return client
 
@@ -226,12 +233,13 @@ class ClientService:
         return client
 
     def delete(self, client_id: uuid.UUID) -> None:
-        if not is_admin(self.user):
-            raise PermissionDenied("Only admins can delete clients")
+        if not is_manager(self.user):
+            raise PermissionDenied("Only managers can delete clients")
         client = self._get(client_id)
+        client.deleted_at = datetime.now(timezone.utc)  # soft-delete -> Trash
+        client.deleted_by = self.user.id
         self.activity.record(
             company_id=self.company_id, user_id=self.user.id, action="client.deleted",
             module="client", entity_type="client", entity_id=client.id, old={"name": client.name},
         )
-        self.db.delete(client)
         self.db.commit()

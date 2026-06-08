@@ -62,6 +62,8 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     homepage_url: Mapped[str | None] = mapped_column(String(500))
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     main_niche: Mapped[Niche | None] = relationship(foreign_keys=[main_niche_id], lazy="joined")
     country: Mapped[Country | None] = relationship(lazy="joined")

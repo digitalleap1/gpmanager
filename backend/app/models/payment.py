@@ -61,6 +61,10 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     project: Mapped[Project | None] = relationship(lazy="joined")
     website: Mapped[Website | None] = relationship(lazy="joined")

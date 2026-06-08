@@ -3,6 +3,7 @@
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -144,7 +145,8 @@ class WebsiteService:
             entity_id=w.id,
             old={"domain": w.domain},
         )
-        self.websites.delete(w)
+        w.deleted_at = datetime.now(timezone.utc)  # soft-delete -> Trash
+        w.deleted_by = self.user.id
         self.db.commit()
 
     # --- contacts ---

@@ -24,7 +24,11 @@ class WebsiteRepository(BaseRepository[Website]):
 
     def get_for_company(self, website_id: uuid.UUID, company_id: uuid.UUID) -> Website | None:
         return self.db.scalars(
-            select(Website).where(Website.id == website_id, Website.company_id == company_id)
+            select(Website).where(
+                Website.id == website_id,
+                Website.company_id == company_id,
+                Website.deleted_at.is_(None),
+            )
         ).first()
 
     def get_by_domain(self, domain: str, company_id: uuid.UUID) -> Website | None:
@@ -48,7 +52,9 @@ class WebsiteRepository(BaseRepository[Website]):
         guest_post_available: bool | None,
         restrict_to_users: set[uuid.UUID] | None = None,
     ) -> Select:
-        stmt = select(Website).where(Website.company_id == company_id)
+        stmt = select(Website).where(
+            Website.company_id == company_id, Website.deleted_at.is_(None)
+        )
         if restrict_to_users is not None:
             stmt = stmt.where(Website.created_by.in_(restrict_to_users))
         if search:

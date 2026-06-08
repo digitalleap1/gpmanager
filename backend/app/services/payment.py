@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
-from app.core.permissions import is_admin, is_manager
+from app.core.permissions import is_manager
 from app.core.scope import accessible_user_ids
 from app.models.payment import Payment, PaymentStatusHistory
 from app.models.project import Project, ProjectMonthlyBudget
@@ -188,9 +188,11 @@ class PaymentService:
         return p
 
     def delete(self, payment_id: uuid.UUID) -> None:
-        if not is_admin(self.user):
-            raise PermissionDenied("Only admins can delete payments")
+        if not is_manager(self.user):
+            raise PermissionDenied("Only managers can delete payments")
         p = self.get(payment_id)
+        p.deleted_at = datetime.now(timezone.utc)  # soft-delete -> Trash
+        p.deleted_by = self.user.id
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,
@@ -200,7 +202,6 @@ class PaymentService:
             entity_id=p.id,
             old={"amount_usd": float(p.amount_usd) if p.amount_usd is not None else None},
         )
-        self.payments.delete(p)
         self.db.commit()
 
     # --- internals ---

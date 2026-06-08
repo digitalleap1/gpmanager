@@ -23,7 +23,11 @@ class PaymentRepository(BaseRepository[Payment]):
 
     def get_for_company(self, payment_id: uuid.UUID, company_id: uuid.UUID) -> Payment | None:
         return self.db.scalars(
-            select(Payment).where(Payment.id == payment_id, Payment.company_id == company_id)
+            select(Payment).where(
+                Payment.id == payment_id,
+                Payment.company_id == company_id,
+                Payment.deleted_at.is_(None),
+            )
         ).first()
 
     def _filtered(
@@ -38,7 +42,9 @@ class PaymentRepository(BaseRepository[Payment]):
         search: str | None,
         restrict_to_users: set[uuid.UUID] | None,
     ) -> Select:
-        stmt = select(Payment).where(Payment.company_id == company_id)
+        stmt = select(Payment).where(
+            Payment.company_id == company_id, Payment.deleted_at.is_(None)
+        )
         if client_id:
             stmt = stmt.where(Payment.client_id == client_id)
         if project_id:

@@ -28,7 +28,11 @@ class ProjectRepository(BaseRepository[Project]):
 
     def get_for_company(self, project_id: uuid.UUID, company_id: uuid.UUID) -> Project | None:
         return self.db.scalars(
-            select(Project).where(Project.id == project_id, Project.company_id == company_id)
+            select(Project).where(
+                Project.id == project_id,
+                Project.company_id == company_id,
+                Project.deleted_at.is_(None),
+            )
         ).first()
 
     def _filtered(
@@ -45,7 +49,9 @@ class ProjectRepository(BaseRepository[Project]):
         include_archived: bool,
         restrict_to_users: set[uuid.UUID] | None,
     ) -> Select:
-        stmt = select(Project).where(Project.company_id == company_id)
+        stmt = select(Project).where(
+            Project.company_id == company_id, Project.deleted_at.is_(None)
+        )
         if not include_archived:
             stmt = stmt.where(Project.is_archived.is_(False))
         if client_id:
