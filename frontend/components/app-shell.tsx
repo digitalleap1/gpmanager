@@ -11,7 +11,9 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ScrollText,
   ShieldCheck,
+  Trash2,
   Upload,
   User as UserIcon,
   Users,
@@ -55,6 +57,13 @@ const NAV_ITEMS: NavItem[] = [
     adminOnly: true,
   },
   { href: "/imports", label: "Imports", icon: Upload, adminOnly: true },
+  { href: "/trash", label: "Trash", icon: Trash2, managerOnly: true },
+  {
+    href: "/audit-logs",
+    label: "Audit Logs",
+    icon: ScrollText,
+    adminOnly: true,
+  },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ];
 

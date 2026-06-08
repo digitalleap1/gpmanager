@@ -971,3 +971,42 @@ export interface LedgerStats {
   team_revenue: NamedRevenue[];
   status_breakdown: StatusBreakdown[];
 }
+
+/* ------------------------------------------------------------------ *
+ * Audit Logs (`/audit-logs`) — admin only                            *
+ * ------------------------------------------------------------------ */
+
+/** A single audit-log entry returned by `GET /audit-logs`. */
+export interface AuditLogRead {
+  id: string;
+  user: { id: string; full_name: string } | null;
+  action: string;
+  module: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/** Filter/query params accepted by `GET /audit-logs`. */
+export interface AuditLogListParams {
+  page?: number;
+  page_size?: number;
+  module?: string;
+  action?: string;
+  user_id?: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Trash / soft-deletes (`/trash`) — manager                          *
+ * ------------------------------------------------------------------ */
+
+/** A soft-deleted record listed by `GET /trash`. */
+export interface TrashItem {
+  entity_type: string;
+  id: string;
+  label: string;
+  deleted_at: string;
+  deleted_by: string | null;
+}
