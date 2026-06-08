@@ -4,7 +4,9 @@
  */
 
 import { api } from "@/lib/api";
+import { downloadFile, uploadFile } from "@/lib/file-transfer";
 import type {
+  BulkImportResult,
   MonthlyBudget,
   MonthlyGoal,
   Page,
@@ -16,6 +18,9 @@ import type {
 } from "@/lib/types";
 
 type QueryValue = string | number | boolean | undefined | null;
+
+/** Bulk import/export file format accepted by the project endpoints. */
+type FileFormat = "csv" | "xlsx";
 
 /** Build a `?key=value` query string from defined params only. */
 function buildQuery(params: Record<string, QueryValue>): string {
@@ -70,6 +75,31 @@ export function archiveProject(
   archived: boolean,
 ): Promise<ProjectListItem> {
   return api.post<ProjectListItem>(`/projects/${id}/archive`, { archived });
+}
+
+/* --- Bulk import / export --- */
+
+/** Bulk-import projects from a `.csv` or `.xlsx` file (multipart upload). */
+export function importProjects(file: File): Promise<BulkImportResult> {
+  return uploadFile<BulkImportResult>("/projects/import", file);
+}
+
+/** Trigger a download (CSV or XLSX) of all projects. Defaults to CSV. */
+export function exportProjects(format: FileFormat = "csv"): Promise<void> {
+  return downloadFile(
+    `/projects/export${buildQuery({ format })}`,
+    `projects.${format}`,
+  );
+}
+
+/** Download a blank projects import template (CSV or XLSX). */
+export function downloadProjectsTemplate(
+  format: FileFormat = "csv",
+): Promise<void> {
+  return downloadFile(
+    `/projects/template${buildQuery({ format })}`,
+    `projects-template.${format}`,
+  );
 }
 
 /* --- Members --- */

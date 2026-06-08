@@ -5,20 +5,29 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { BulkBar, type FileFormat } from "@/components/bulk-bar";
 import {
   PaymentStatusBadge,
   paymentStatusLabel,
 } from "@/components/payment-status-badge";
 import { ApiError } from "@/lib/api";
 import type {
+  BulkImportResult,
   CurrencyRef,
   PaymentListItem,
+  PaymentListParams,
   PaymentStatus,
   ProjectListItem,
 } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { getCurrencies } from "@/services/lookup-service";
-import { listPayments, removePayment } from "@/services/payment-service";
+import {
+  downloadPaymentsTemplate,
+  exportPayments,
+  importPayments,
+  listPayments,
+  removePayment,
+} from "@/services/payment-service";
 import { listProjects } from "@/services/project-service";
 
 const PAGE_SIZE = 20;
@@ -53,6 +62,12 @@ export default function PaymentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Bulk import/export state.
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [importResult, setImportResult] = useState<BulkImportResult | null>(
+    null,
+  );
 
   // Filter pickers.
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -96,6 +111,19 @@ export default function PaymentsPage() {
     [currencies],
   );
 
+  // The active filter set, shared by the list query and the bulk export.
+  const activeFilters = useCallback(
+    (): PaymentListParams => ({
+      search: search || undefined,
+      project_id: projectId || undefined,
+      status: status || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+      sort: "-created_at",
+    }),
+    [search, projectId, status, dateFrom, dateTo],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -103,12 +131,7 @@ export default function PaymentsPage() {
       const res = await listPayments({
         page,
         page_size: PAGE_SIZE,
-        search: search || undefined,
-        project_id: projectId || undefined,
-        status: status || undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-        sort: "-created_at",
+        ...activeFilters(),
       });
       setItems(res.items);
       setPages(res.pages);
@@ -122,11 +145,62 @@ export default function PaymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, projectId, status, dateFrom, dateTo]);
+  }, [page, activeFilters]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function handleExport(format: FileFormat) {
+    setActionError(null);
+    setBulkBusy(true);
+    try {
+      await exportPayments(activeFilters(), format);
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to export payments. Please try again.",
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleTemplate(format: FileFormat) {
+    setActionError(null);
+    setBulkBusy(true);
+    try {
+      await downloadPaymentsTemplate(format);
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to download the template. Please try again.",
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleImport(file: File) {
+    setActionError(null);
+    setImportResult(null);
+    setBulkBusy(true);
+    try {
+      const result = await importPayments(file);
+      setImportResult(result);
+      await load();
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to import the file. Please check it and try again.",
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function handleDelete(payment: PaymentListItem) {
     const label =
@@ -216,13 +290,21 @@ export default function PaymentsPage() {
               className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <Link
-            href="/payments/new"
-            className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            New Payment
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <BulkBar
+              onImport={handleImport}
+              onExport={handleExport}
+              onTemplate={handleTemplate}
+              busy={bulkBusy}
+            />
+            <Link
+              href="/payments/new"
+              className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              New Payment
+            </Link>
+          </div>
         </div>
 
         {actionError && (
@@ -232,6 +314,35 @@ export default function PaymentsPage() {
           >
             {actionError}
           </p>
+        )}
+
+        {/* Import result summary */}
+        {importResult && (
+          <div className="rounded-md border border-border bg-card p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-medium">
+                {importResult.created} created, {importResult.updated} updated,{" "}
+                {importResult.errors.length} error
+                {importResult.errors.length === 1 ? "" : "s"}.
+              </p>
+              <button
+                type="button"
+                onClick={() => setImportResult(null)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+            {importResult.errors.length > 0 && (
+              <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-destructive">
+                {importResult.errors.map((err, i) => (
+                  <li key={i}>
+                    Row {err.row}: {err.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
 
         {/* Table */}

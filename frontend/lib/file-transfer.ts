@@ -24,20 +24,27 @@ async function readError(response: Response): Promise<string> {
 }
 
 /**
- * Download an authenticated endpoint as a file. Fetches the response as a blob,
- * creates a temporary object URL + anchor, clicks it to trigger the browser
- * download, then revokes the URL. Throws an `ApiError` on a non-ok response.
+ * Pull a filename out of a `Content-Disposition` header, if present. Handles
+ * both `filename="x.csv"` and RFC 5987 `filename*=UTF-8''x.csv` forms. Returns
+ * `null` when no usable filename is found.
  */
-export async function downloadCsv(path: string, filename: string): Promise<void> {
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
-  });
-
-  if (!response.ok) {
-    throw new ApiError(response.status, await readError(response));
+function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  // Prefer the RFC 5987 extended form, which may be percent-encoded.
+  const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      // Fall through to the plain form.
+    }
   }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1]?.trim() ?? null;
+}
 
-  const blob = await response.blob();
+/** Trigger a browser download for an already-fetched blob. */
+function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -46,6 +53,39 @@ export async function downloadCsv(path: string, filename: string): Promise<void>
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Download an authenticated endpoint as a file. Works for any binary payload
+ * (CSV *or* XLSX): fetches the response as a blob, derives the filename from the
+ * `Content-Disposition` header when present (else `fallbackName`), then triggers
+ * the browser download. Throws an `ApiError` on a non-ok response.
+ */
+export async function downloadFile(
+  path: string,
+  fallbackName: string,
+): Promise<void> {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await readError(response));
+  }
+
+  const filename =
+    filenameFromDisposition(response.headers.get("Content-Disposition")) ??
+    fallbackName;
+  saveBlob(await response.blob(), filename);
+}
+
+/**
+ * Download an authenticated endpoint as a file using the provided filename as a
+ * fallback. Thin wrapper kept for backwards compatibility — `downloadFile` now
+ * handles both CSV and XLSX payloads.
+ */
+export function downloadCsv(path: string, filename: string): Promise<void> {
+  return downloadFile(path, filename);
 }
 
 /**

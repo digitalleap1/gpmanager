@@ -7,7 +7,9 @@
  */
 
 import { api } from "@/lib/api";
+import { downloadFile, uploadFile } from "@/lib/file-transfer";
 import type {
+  BulkImportResult,
   Page,
   PaymentCreate,
   PaymentDetail,
@@ -17,6 +19,9 @@ import type {
 } from "@/lib/types";
 
 type QueryValue = string | number | boolean | undefined | null;
+
+/** Bulk import/export file format accepted by the payment endpoints. */
+type FileFormat = "csv" | "xlsx";
 
 /** Build a `?key=value` query string from defined params only. */
 function buildQuery(params: Record<string, QueryValue>): string {
@@ -29,18 +34,25 @@ function buildQuery(params: Record<string, QueryValue>): string {
   return qs ? `?${qs}` : "";
 }
 
-export function listPayments(
-  params: PaymentListParams = {},
-): Promise<Page<PaymentListItem>> {
-  const query: Record<string, QueryValue> = {
-    page: params.page,
-    page_size: params.page_size,
+/** Shared filter map used by both `GET /payments` and `/payments/export`. */
+function filterQuery(params: PaymentListParams): Record<string, QueryValue> {
+  return {
     project_id: params.project_id,
     status: params.status,
     date_from: params.date_from,
     date_to: params.date_to,
     search: params.search,
     sort: params.sort,
+  };
+}
+
+export function listPayments(
+  params: PaymentListParams = {},
+): Promise<Page<PaymentListItem>> {
+  const query: Record<string, QueryValue> = {
+    page: params.page,
+    page_size: params.page_size,
+    ...filterQuery(params),
   };
   return api.get<Page<PaymentListItem>>(`/payments${buildQuery(query)}`);
 }
@@ -77,4 +89,33 @@ export function setStatus(
 
 export function removePayment(id: string): Promise<void> {
   return api.delete<void>(`/payments/${id}`);
+}
+
+/* --- Bulk import / export --- */
+
+/** Bulk-import payments from a `.csv` or `.xlsx` file (multipart upload). */
+export function importPayments(file: File): Promise<BulkImportResult> {
+  return uploadFile<BulkImportResult>("/payments/import", file);
+}
+
+/**
+ * Trigger a download (CSV or XLSX) of payments matching the active filters.
+ * Defaults to CSV.
+ */
+export function exportPayments(
+  params: PaymentListParams = {},
+  format: FileFormat = "csv",
+): Promise<void> {
+  const qs = buildQuery({ ...filterQuery(params), format });
+  return downloadFile(`/payments/export${qs}`, `payments.${format}`);
+}
+
+/** Download a blank payments import template (CSV or XLSX). */
+export function downloadPaymentsTemplate(
+  format: FileFormat = "csv",
+): Promise<void> {
+  return downloadFile(
+    `/payments/template${buildQuery({ format })}`,
+    `payments-template.${format}`,
+  );
 }

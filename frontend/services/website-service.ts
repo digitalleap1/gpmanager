@@ -8,18 +8,21 @@
  */
 
 import { api } from "@/lib/api";
-import { downloadCsv, uploadFile } from "@/lib/file-transfer";
+import { downloadFile, uploadFile } from "@/lib/file-transfer";
 import type {
+  BulkImportResult,
   Page,
   WebsiteContact,
   WebsiteContactCreate,
   WebsiteCreate,
   WebsiteDetail,
-  WebsiteImportResult,
   WebsiteListItem,
   WebsiteListParams,
   WebsiteUpdate,
 } from "@/lib/types";
+
+/** Bulk import/export file format accepted by the `/{entity}` endpoints. */
+type FileFormat = "csv" | "xlsx";
 
 type QueryValue = string | number | boolean | undefined | null;
 
@@ -90,13 +93,29 @@ export function removeContact(id: string, contactId: string): Promise<void> {
   return api.delete<void>(`/websites/${id}/contacts/${contactId}`);
 }
 
-/** Trigger a CSV download of websites matching the active filters. */
-export function exportWebsites(params: WebsiteListParams = {}): Promise<void> {
-  const qs = buildQuery(filterQuery(params));
-  return downloadCsv(`/websites/export${qs}`, "websites.csv");
+/**
+ * Trigger a download (CSV or XLSX) of websites matching the active filters.
+ * Defaults to CSV to preserve existing call sites.
+ */
+export function exportWebsites(
+  params: WebsiteListParams = {},
+  format: FileFormat = "csv",
+): Promise<void> {
+  const qs = buildQuery({ ...filterQuery(params), format });
+  return downloadFile(`/websites/export${qs}`, `websites.${format}`);
 }
 
-/** Bulk-import websites from a `.csv` file (multipart upload). */
-export function importWebsites(file: File): Promise<WebsiteImportResult> {
-  return uploadFile<WebsiteImportResult>("/websites/import", file);
+/** Download a blank websites import template (CSV or XLSX). */
+export function downloadWebsitesTemplate(
+  format: FileFormat = "csv",
+): Promise<void> {
+  return downloadFile(
+    `/websites/template${buildQuery({ format })}`,
+    `websites-template.${format}`,
+  );
+}
+
+/** Bulk-import websites from a `.csv` or `.xlsx` file (multipart upload). */
+export function importWebsites(file: File): Promise<BulkImportResult> {
+  return uploadFile<BulkImportResult>("/websites/import", file);
 }

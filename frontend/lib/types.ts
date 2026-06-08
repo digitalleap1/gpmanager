@@ -545,12 +545,18 @@ export interface WebsiteContactCreate {
   is_primary?: boolean;
 }
 
-/** Result envelope returned by `POST /websites/import`. */
-export interface WebsiteImportResult {
+/**
+ * Shared result envelope returned by every bulk `POST /{entity}/import`
+ * endpoint (websites, payments, projects).
+ */
+export interface BulkImportResult {
   created: number;
   updated: number;
   errors: { row: number; message: string }[];
 }
+
+/** Result envelope returned by `POST /websites/import`. */
+export type WebsiteImportResult = BulkImportResult;
 
 /* ------------------------------------------------------------------ *
  * Module 7 (Payment Management) types

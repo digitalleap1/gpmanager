@@ -1,27 +1,22 @@
 "use client";
 
-import {
-  Download,
-  ExternalLink,
-  Pencil,
-  Plus,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { BulkBar, type FileFormat } from "@/components/bulk-bar";
 import { ApiError } from "@/lib/api";
 import type {
+  BulkImportResult,
   CountryRef,
   NicheRef,
-  WebsiteImportResult,
   WebsiteListItem,
 } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { getCountries, getNiches } from "@/services/lookup-service";
 import {
+  downloadWebsitesTemplate,
   exportWebsites,
   importWebsites,
   listWebsites,
@@ -61,11 +56,9 @@ export default function WebsitesPage() {
   const [countries, setCountries] = useState<CountryRef[]>([]);
   const [niches, setNiches] = useState<NicheRef[]>([]);
 
-  // CSV import/export state.
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [exporting, setExporting] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<WebsiteImportResult | null>(
+  // Bulk import/export state.
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [importResult, setImportResult] = useState<BulkImportResult | null>(
     null,
   );
 
@@ -169,11 +162,11 @@ export default function WebsitesPage() {
     }
   }
 
-  async function handleExport() {
+  async function handleExport(format: FileFormat) {
     setActionError(null);
-    setExporting(true);
+    setBulkBusy(true);
     try {
-      await exportWebsites(activeFilters());
+      await exportWebsites(activeFilters(), format);
     } catch (err) {
       setActionError(
         err instanceof ApiError
@@ -181,19 +174,30 @@ export default function WebsitesPage() {
           : "Unable to export websites. Please try again.",
       );
     } finally {
-      setExporting(false);
+      setBulkBusy(false);
     }
   }
 
-  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    // Allow re-selecting the same file later.
-    e.target.value = "";
-    if (!file) return;
+  async function handleTemplate(format: FileFormat) {
+    setActionError(null);
+    setBulkBusy(true);
+    try {
+      await downloadWebsitesTemplate(format);
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to download the template. Please try again.",
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
+  async function handleImport(file: File) {
     setActionError(null);
     setImportResult(null);
-    setImporting(true);
+    setBulkBusy(true);
     try {
       const result = await importWebsites(file);
       setImportResult(result);
@@ -202,10 +206,10 @@ export default function WebsitesPage() {
       setActionError(
         err instanceof ApiError
           ? err.message
-          : "Unable to import the CSV. Please check the file and try again.",
+          : "Unable to import the file. Please check it and try again.",
       );
     } finally {
-      setImporting(false);
+      setBulkBusy(false);
     }
   }
 
@@ -255,30 +259,11 @@ export default function WebsitesPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={exporting}
-              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
-            >
-              <Download className="h-4 w-4" />
-              {exporting ? "Exporting…" : "Export CSV"}
-            </button>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
-            >
-              <Upload className="h-4 w-4" />
-              {importing ? "Importing…" : "Import CSV"}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleImport}
-              className="hidden"
+            <BulkBar
+              onImport={handleImport}
+              onExport={handleExport}
+              onTemplate={handleTemplate}
+              busy={bulkBusy}
             />
             <Link
               href="/websites/new"
