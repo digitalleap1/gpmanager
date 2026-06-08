@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFound, PermissionDenied
 from app.core.permissions import is_manager
+from app.core.scope import accessible_user_ids
 from app.models.task import Task, TaskComment
 from app.models.user import User
 from app.repositories.project import ProjectRepository
@@ -30,8 +31,8 @@ class TaskService:
         self.projects = ProjectRepository(db)
         self.activity = ActivityLogger(db)
 
-    def _restrict_user_id(self) -> uuid.UUID | None:
-        return None if is_manager(self.user) else self.user.id
+    def _scope(self) -> set[uuid.UUID] | None:
+        return accessible_user_ids(self.db, self.user)
 
     def _can_edit(self, t: Task) -> bool:
         return (
@@ -42,7 +43,7 @@ class TaskService:
 
     def list(self, **filters) -> tuple[list[Task], int]:
         items, total = self.tasks.list_tasks(
-            self.company_id, restrict_user_id=self._restrict_user_id(), **filters
+            self.company_id, restrict_to_users=self._scope(), **filters
         )
         return list(items), total
 
@@ -50,7 +51,8 @@ class TaskService:
         t = self.tasks.get_for_company(task_id, self.company_id)
         if t is None:
             raise NotFound("Task not found")
-        if self._restrict_user_id() is not None and not self._can_edit(t):
+        users = self._scope()
+        if users is not None and t.assigned_to not in users and t.created_by not in users:
             raise NotFound("Task not found")
         return t
 

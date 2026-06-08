@@ -37,7 +37,7 @@ class TaskRepository(BaseRepository[Task]):
         assigned_to: uuid.UUID | None,
         due_before: date | None,
         search: str | None,
-        restrict_user_id: uuid.UUID | None,
+        restrict_to_users: set[uuid.UUID] | None,
     ) -> Select:
         stmt = select(Task).where(Task.company_id == company_id)
         if project_id:
@@ -53,9 +53,12 @@ class TaskRepository(BaseRepository[Task]):
         if search:
             like = f"%{search}%"
             stmt = stmt.where(or_(Task.name.ilike(like), Task.description.ilike(like)))
-        if restrict_user_id is not None:
+        if restrict_to_users is not None:
             stmt = stmt.where(
-                or_(Task.assigned_to == restrict_user_id, Task.created_by == restrict_user_id)
+                or_(
+                    Task.assigned_to.in_(restrict_to_users),
+                    Task.created_by.in_(restrict_to_users),
+                )
             )
         return stmt
 
@@ -69,7 +72,7 @@ class TaskRepository(BaseRepository[Task]):
         assigned_to: uuid.UUID | None = None,
         due_before: date | None = None,
         search: str | None = None,
-        restrict_user_id: uuid.UUID | None = None,
+        restrict_to_users: set[uuid.UUID] | None = None,
         sort: str = "-created_at",
         offset: int = 0,
         limit: int = 20,
@@ -81,7 +84,7 @@ class TaskRepository(BaseRepository[Task]):
             assigned_to=assigned_to,
             due_before=due_before,
             search=search,
-            restrict_user_id=restrict_user_id,
+            restrict_to_users=restrict_to_users,
         )
         stmt = self._filtered(company_id, **filters)
         descending = sort.startswith("-")

@@ -36,7 +36,7 @@ class PaymentRepository(BaseRepository[Payment]):
         date_from: date | None,
         date_to: date | None,
         search: str | None,
-        restrict_user_id: uuid.UUID | None,
+        restrict_to_users: set[uuid.UUID] | None,
     ) -> Select:
         stmt = select(Payment).where(Payment.company_id == company_id)
         if client_id:
@@ -58,8 +58,13 @@ class PaymentRepository(BaseRepository[Payment]):
                     Payment.remarks.ilike(like),
                 )
             )
-        if restrict_user_id is not None:
-            stmt = stmt.where(Payment.created_by == restrict_user_id)
+        if restrict_to_users is not None:
+            stmt = stmt.where(
+                or_(
+                    Payment.created_by.in_(restrict_to_users),
+                    Payment.attributed_to_id.in_(restrict_to_users),
+                )
+            )
         return stmt
 
     def list_payments(
@@ -72,7 +77,7 @@ class PaymentRepository(BaseRepository[Payment]):
         date_from: date | None = None,
         date_to: date | None = None,
         search: str | None = None,
-        restrict_user_id: uuid.UUID | None = None,
+        restrict_to_users: set[uuid.UUID] | None = None,
         sort: str = "-created_at",
         offset: int = 0,
         limit: int = 20,
@@ -84,7 +89,7 @@ class PaymentRepository(BaseRepository[Payment]):
             date_from=date_from,
             date_to=date_to,
             search=search,
-            restrict_user_id=restrict_user_id,
+            restrict_to_users=restrict_to_users,
         )
         stmt = self._filtered(company_id, **filters)
         descending = sort.startswith("-")
@@ -104,7 +109,7 @@ class PaymentRepository(BaseRepository[Payment]):
         self,
         company_id: uuid.UUID,
         *,
-        restrict_user_id: uuid.UUID | None = None,
+        restrict_to_users: set[uuid.UUID] | None = None,
         project_id: uuid.UUID | None = None,
         status: str | None = None,
         date_from: date | None = None,
@@ -118,7 +123,7 @@ class PaymentRepository(BaseRepository[Payment]):
             date_from=date_from,
             date_to=date_to,
             search=search,
-            restrict_user_id=restrict_user_id,
+            restrict_to_users=restrict_to_users,
         ).order_by(Payment.created_at.asc())
         return self.db.scalars(stmt).all()
 

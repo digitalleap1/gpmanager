@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_manager
+from app.core.scope import accessible_user_ids
 from app.models.lookups import Country, Language, Niche
 from app.models.user import User
 from app.models.website import Website, WebsiteContact
@@ -49,13 +50,21 @@ class WebsiteService:
         self.websites = WebsiteRepository(db)
         self.activity = ActivityLogger(db)
 
+    def _scope(self) -> set[uuid.UUID] | None:
+        return accessible_user_ids(self.db, self.user)
+
     def list(self, **filters) -> tuple[list[Website], int]:
-        items, total = self.websites.list_websites(self.company_id, **filters)
+        items, total = self.websites.list_websites(
+            self.company_id, restrict_to_users=self._scope(), **filters
+        )
         return list(items), total
 
     def get(self, website_id: uuid.UUID) -> Website:
         w = self.websites.get_for_company(website_id, self.company_id)
         if w is None:
+            raise NotFound("Website not found")
+        users = self._scope()
+        if users is not None and w.created_by not in users:
             raise NotFound("Website not found")
         return w
 
@@ -163,7 +172,9 @@ class WebsiteService:
 
     # --- bulk import / export (CSV + XLSX) ---
     def _export_rows(self, **filters) -> list[list[object]]:
-        rows = self.websites.all_for_export(self.company_id, **filters)
+        rows = self.websites.all_for_export(
+            self.company_id, restrict_to_users=self._scope(), **filters
+        )
         return [
             [
                 w.domain,

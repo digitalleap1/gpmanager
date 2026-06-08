@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_admin, is_manager
+from app.core.scope import accessible_user_ids
 from app.models.lookups import Country, Niche
 from app.models.project import Project, ProjectMember
 from app.models.user import User
@@ -53,22 +54,24 @@ class ProjectService:
         self.projects = ProjectRepository(db)
         self.activity = ActivityLogger(db)
 
-    def _restrict_user_id(self) -> uuid.UUID | None:
-        return None if is_manager(self.user) else self.user.id
+    def _scope(self) -> set[uuid.UUID] | None:
+        """User ids in scope (None = admin, sees all)."""
+        return accessible_user_ids(self.db, self.user)
 
     def _visible(self, p: Project) -> bool:
-        if is_manager(self.user):
+        users = self._scope()
+        if users is None:
             return True
-        uid = self.user.id
         return (
-            p.assignee_id == uid
-            or p.team_lead_id == uid
-            or any(m.user_id == uid for m in p.members)
+            p.assignee_id in users
+            or p.team_lead_id in users
+            or p.created_by in users
+            or any(m.user_id in users for m in p.members)
         )
 
     def list(self, **filters) -> tuple[list[Project], int]:
         items, total = self.projects.list_projects(
-            self.company_id, restrict_user_id=self._restrict_user_id(), **filters
+            self.company_id, restrict_to_users=self._scope(), **filters
         )
         return list(items), total
 

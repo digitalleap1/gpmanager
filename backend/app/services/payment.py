@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_admin, is_manager
+from app.core.scope import accessible_user_ids
 from app.models.payment import Payment, PaymentStatusHistory
 from app.models.project import Project, ProjectMonthlyBudget
 from app.models.user import User
@@ -56,15 +57,15 @@ class PaymentService:
         self.budgets = BudgetRepository(db)
         self.activity = ActivityLogger(db)
 
-    def _restrict_user_id(self) -> uuid.UUID | None:
-        return None if is_manager(self.user) else self.user.id
+    def _scope(self) -> set[uuid.UUID] | None:
+        return accessible_user_ids(self.db, self.user)
 
     def _can_edit(self, p: Payment) -> bool:
         return is_manager(self.user) or p.created_by == self.user.id
 
     def list(self, **filters) -> tuple[list[Payment], int]:
         items, total = self.payments.list_payments(
-            self.company_id, restrict_user_id=self._restrict_user_id(), **filters
+            self.company_id, restrict_to_users=self._scope(), **filters
         )
         return list(items), total
 
@@ -72,7 +73,8 @@ class PaymentService:
         p = self.payments.get_for_company(payment_id, self.company_id)
         if p is None:
             raise NotFound("Payment not found")
-        if self._restrict_user_id() is not None and p.created_by != self.user.id:
+        users = self._scope()
+        if users is not None and p.created_by not in users and p.attributed_to_id not in users:
             raise NotFound("Payment not found")
         return p
 
@@ -263,7 +265,7 @@ class PaymentService:
     # --- bulk import / export (CSV + XLSX) ---
     def _export_rows(self, **filters) -> list[list[object]]:
         rows = self.payments.all_for_export(
-            self.company_id, restrict_user_id=self._restrict_user_id(), **filters
+            self.company_id, restrict_to_users=self._scope(), **filters
         )
         return [
             [

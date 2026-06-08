@@ -148,6 +148,13 @@ export default function ReportsPage() {
     if (next !== "guest-post") setStatus("");
   }
 
+  // Auto-run the report whenever the report type changes (incl. first load), so
+  // data shows immediately without needing to click "Run report".
+  useEffect(() => {
+    void handleRun();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType]);
+
   if (forbidden) {
     return (
       <AppShell title="Reports">

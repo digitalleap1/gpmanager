@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFound, PermissionDenied
 from app.core.permissions import is_manager
+from app.core.scope import accessible_user_ids
 from app.models.guest_post import GuestPost, GuestPostStatusHistory
 from app.models.project import ProjectMonthlyGoal
 from app.models.user import User
@@ -31,8 +32,8 @@ class GuestPostService:
         self.goals = GoalRepository(db)
         self.activity = ActivityLogger(db)
 
-    def _restrict_user_id(self) -> uuid.UUID | None:
-        return None if is_manager(self.user) else self.user.id
+    def _scope(self) -> set[uuid.UUID] | None:
+        return accessible_user_ids(self.db, self.user)
 
     def _can_edit(self, gp: GuestPost) -> bool:
         return (
@@ -43,7 +44,7 @@ class GuestPostService:
 
     def list(self, **filters) -> tuple[list[GuestPost], int]:
         items, total = self.gps.list_guest_posts(
-            self.company_id, restrict_user_id=self._restrict_user_id(), **filters
+            self.company_id, restrict_to_users=self._scope(), **filters
         )
         return list(items), total
 
@@ -51,7 +52,8 @@ class GuestPostService:
         gp = self.gps.get_for_company(gp_id, self.company_id)
         if gp is None:
             raise NotFound("Guest post not found")
-        if self._restrict_user_id() is not None and not self._can_edit(gp):
+        users = self._scope()
+        if users is not None and gp.assigned_user_id not in users and gp.created_by not in users:
             raise NotFound("Guest post not found")
         return gp
 

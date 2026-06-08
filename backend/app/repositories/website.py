@@ -46,8 +46,11 @@ class WebsiteRepository(BaseRepository[Website]):
         min_traffic: int | None,
         max_price: float | None,
         guest_post_available: bool | None,
+        restrict_to_users: set[uuid.UUID] | None = None,
     ) -> Select:
         stmt = select(Website).where(Website.company_id == company_id)
+        if restrict_to_users is not None:
+            stmt = stmt.where(Website.created_by.in_(restrict_to_users))
         if search:
             like = f"%{search}%"
             stmt = stmt.where(
@@ -90,6 +93,7 @@ class WebsiteRepository(BaseRepository[Website]):
         min_traffic: int | None = None,
         max_price: float | None = None,
         guest_post_available: bool | None = None,
+        restrict_to_users: set[uuid.UUID] | None = None,
         sort: str = "-created_at",
         offset: int = 0,
         limit: int = 20,
@@ -103,6 +107,7 @@ class WebsiteRepository(BaseRepository[Website]):
             min_traffic=min_traffic,
             max_price=max_price,
             guest_post_available=guest_post_available,
+            restrict_to_users=restrict_to_users,
         )
         stmt = self._filtered(company_id, **filters)
         descending = sort.startswith("-")

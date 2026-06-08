@@ -35,7 +35,7 @@ class GuestPostRepository(BaseRepository[GuestPost]):
         assigned_user_id: uuid.UUID | None,
         website_id: uuid.UUID | None,
         search: str | None,
-        restrict_user_id: uuid.UUID | None,
+        restrict_to_users: set[uuid.UUID] | None,
     ) -> Select:
         stmt = select(GuestPost).where(GuestPost.company_id == company_id)
         if project_id:
@@ -55,11 +55,11 @@ class GuestPostRepository(BaseRepository[GuestPost]):
                     GuestPost.contact_email.ilike(like),
                 )
             )
-        if restrict_user_id is not None:
+        if restrict_to_users is not None:
             stmt = stmt.where(
                 or_(
-                    GuestPost.assigned_user_id == restrict_user_id,
-                    GuestPost.created_by == restrict_user_id,
+                    GuestPost.assigned_user_id.in_(restrict_to_users),
+                    GuestPost.created_by.in_(restrict_to_users),
                 )
             )
         return stmt
@@ -73,7 +73,7 @@ class GuestPostRepository(BaseRepository[GuestPost]):
         assigned_user_id: uuid.UUID | None = None,
         website_id: uuid.UUID | None = None,
         search: str | None = None,
-        restrict_user_id: uuid.UUID | None = None,
+        restrict_to_users: set[uuid.UUID] | None = None,
         sort: str = "-created_at",
         offset: int = 0,
         limit: int = 20,
@@ -84,7 +84,7 @@ class GuestPostRepository(BaseRepository[GuestPost]):
             assigned_user_id=assigned_user_id,
             website_id=website_id,
             search=search,
-            restrict_user_id=restrict_user_id,
+            restrict_to_users=restrict_to_users,
         )
         stmt = self._filtered(company_id, **filters)
         descending = sort.startswith("-")

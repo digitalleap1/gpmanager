@@ -43,7 +43,7 @@ class ProjectRepository(BaseRepository[Project]):
         team_lead_id: uuid.UUID | None,
         assignee_id: uuid.UUID | None,
         include_archived: bool,
-        restrict_user_id: uuid.UUID | None,
+        restrict_to_users: set[uuid.UUID] | None,
     ) -> Select:
         stmt = select(Project).where(Project.company_id == company_id)
         if not include_archived:
@@ -62,14 +62,16 @@ class ProjectRepository(BaseRepository[Project]):
             stmt = stmt.where(Project.assignee_id == assignee_id)
         if search:
             stmt = stmt.where(Project.name.ilike(f"%{search}%"))
-        if restrict_user_id is not None:
+        # Row-level scope: visible to assignee / team lead / creator / member.
+        if restrict_to_users is not None:
             member_sq = select(ProjectMember.project_id).where(
-                ProjectMember.user_id == restrict_user_id
+                ProjectMember.user_id.in_(restrict_to_users)
             )
             stmt = stmt.where(
                 or_(
-                    Project.assignee_id == restrict_user_id,
-                    Project.team_lead_id == restrict_user_id,
+                    Project.assignee_id.in_(restrict_to_users),
+                    Project.team_lead_id.in_(restrict_to_users),
+                    Project.created_by.in_(restrict_to_users),
                     Project.id.in_(member_sq),
                 )
             )
@@ -87,7 +89,7 @@ class ProjectRepository(BaseRepository[Project]):
         team_lead_id: uuid.UUID | None = None,
         assignee_id: uuid.UUID | None = None,
         include_archived: bool = False,
-        restrict_user_id: uuid.UUID | None = None,
+        restrict_to_users: set[uuid.UUID] | None = None,
         sort: str = "-created_at",
         offset: int = 0,
         limit: int = 20,
@@ -101,7 +103,7 @@ class ProjectRepository(BaseRepository[Project]):
             team_lead_id=team_lead_id,
             assignee_id=assignee_id,
             include_archived=include_archived,
-            restrict_user_id=restrict_user_id,
+            restrict_to_users=restrict_to_users,
         )
         stmt = self._filtered(company_id, **filters)
 

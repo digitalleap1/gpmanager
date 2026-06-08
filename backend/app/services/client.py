@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_admin, is_manager
+from app.core.scope import accessible_user_ids
 from app.models.client import Client
 from app.models.payment import Payment
 from app.models.project import Project
@@ -109,9 +110,25 @@ class ClientService:
     # --- reads ---
     def list(self) -> list[ClientListItem]:
         self._require_manager()
-        clients = self.db.scalars(
-            select(Client).where(Client.company_id == self.company_id).order_by(Client.name)
-        ).all()
+        stmt = select(Client).where(Client.company_id == self.company_id)
+        scope = accessible_user_ids(self.db, self.user)
+        if scope is not None:
+            # Non-admins see only clients they created or that hold a payment they
+            # created / are attributed to.
+            from app.models.payment import Payment
+
+            owned_clients = select(Payment.client_id).where(
+                Payment.company_id == self.company_id,
+                Payment.client_id.is_not(None),
+                or_(
+                    Payment.created_by.in_(scope),
+                    Payment.attributed_to_id.in_(scope),
+                ),
+            )
+            stmt = stmt.where(
+                or_(Client.created_by.in_(scope), Client.id.in_(owned_clients))
+            )
+        clients = self.db.scalars(stmt.order_by(Client.name)).all()
         paid = self._paid_map()
         counts = self._project_counts()
         items = []
