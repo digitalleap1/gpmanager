@@ -10,11 +10,12 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import PermissionDenied
 from app.core.permissions import is_manager
+from app.core.scope import accessible_user_ids
 from app.models.client import Client
 from app.models.payment import Payment
 from app.models.user import User
@@ -38,10 +39,22 @@ class LedgerService:
         company = self.company_id
         today = datetime.now(timezone.utc).date()
 
+        # Common filters: company, not-trashed, and RBAC scope (non-admins only
+        # see payments they created or are attributed to).
+        base = [Payment.company_id == company, Payment.deleted_at.is_(None)]
+        scope = accessible_user_ids(self.db, self.user)
+        if scope is not None:
+            base.append(
+                or_(
+                    Payment.created_by.in_(scope),
+                    Payment.attributed_to_id.in_(scope),
+                )
+            )
+
         # Paid payments -> total + monthly revenue.
         paid = self.db.execute(
             select(Payment.payment_date, Payment.amount_usd).where(
-                Payment.company_id == company, Payment.status == "paid"
+                *base, Payment.status == "paid"
             )
         ).all()
         total_revenue = 0.0
@@ -60,7 +73,7 @@ class LedgerService:
         pending_count = (
             self.db.scalar(
                 select(func.count()).select_from(Payment).where(
-                    Payment.company_id == company, Payment.status == "pending"
+                    *base, Payment.status == "pending"
                 )
             )
             or 0
@@ -68,7 +81,7 @@ class LedgerService:
         pending_amount = float(
             self.db.scalar(
                 select(func.coalesce(func.sum(Payment.amount_usd), 0)).where(
-                    Payment.company_id == company, Payment.status == "pending"
+                    *base, Payment.status == "pending"
                 )
             )
             or 0
@@ -76,7 +89,7 @@ class LedgerService:
         overdue_count = (
             self.db.scalar(
                 select(func.count()).select_from(Payment).where(
-                    Payment.company_id == company,
+                    *base,
                     Payment.status == "pending",
                     Payment.payment_date.is_not(None),
                     Payment.payment_date < today,
@@ -87,7 +100,7 @@ class LedgerService:
         overdue_amount = float(
             self.db.scalar(
                 select(func.coalesce(func.sum(Payment.amount_usd), 0)).where(
-                    Payment.company_id == company,
+                    *base,
                     Payment.status == "pending",
                     Payment.payment_date.is_not(None),
                     Payment.payment_date < today,
@@ -100,7 +113,7 @@ class LedgerService:
         client_rows = self.db.execute(
             select(Client.id, Client.name, func.coalesce(func.sum(Payment.amount_usd), 0))
             .join(Payment, Payment.client_id == Client.id)
-            .where(Payment.company_id == company, Payment.status == "paid")
+            .where(*base, Payment.status == "paid")
             .group_by(Client.id, Client.name)
             .order_by(func.coalesce(func.sum(Payment.amount_usd), 0).desc())
             .limit(top)
@@ -114,7 +127,7 @@ class LedgerService:
         team_rows = self.db.execute(
             select(User.id, User.full_name, func.coalesce(func.sum(Payment.amount_usd), 0))
             .join(Payment, Payment.attributed_to_id == User.id)
-            .where(Payment.company_id == company, Payment.status == "paid")
+            .where(*base, Payment.status == "paid")
             .group_by(User.id, User.full_name)
             .order_by(func.coalesce(func.sum(Payment.amount_usd), 0).desc())
             .limit(top)
@@ -131,7 +144,7 @@ class LedgerService:
                 func.count(),
                 func.coalesce(func.sum(Payment.amount_usd), 0),
             )
-            .where(Payment.company_id == company)
+            .where(*base)
             .group_by(Payment.status)
         ).all()
         status_breakdown = [
