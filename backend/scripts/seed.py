@@ -30,6 +30,12 @@ NICHES: list[str] = [
     "Real Estate", "Education", "E-commerce", "Legal", "Automotive", "Food & Beverage",
     "Fashion", "Home & Garden", "Sports", "Gaming", "Cryptocurrency", "B2B", "Lifestyle",
     "Business",
+    # Digital Leap's real niche taxonomy (the Master workbook's niche tabs).
+    "Accounting & Taxation", "Advertising & Marketing", "Auto & Moto",
+    "Education & Training", "Business & Finance", "Beauty", "Health & Fitness",
+    "Fashion & Lifestyle", "Parenting", "Firearms", "Law", "LGBTQ", "Logistics",
+    "Moving & Storage", "Home", "Online Gaming", "Food & Nutrition", "Multi Niche",
+    "Event Wedding & BDY",
 ]
 
 # (code, module, description)

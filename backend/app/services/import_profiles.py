@@ -147,6 +147,8 @@ class ProjectProfileBase:
             val = (canonical.get(field_name) or "").strip()
             if val and ctx.users.get(val.lower()) is None:
                 issues.append(Issue("warning", f"{label} '{val}' not matched to a user — left blank"))
+        if not (canonical.get("assignee") or "").strip():
+            issues.append(Issue("warning", "No assignee specified"))
         status = (canonical.get("status") or "").strip().lower()
         if status and status not in PROJECT_STATUSES:
             issues.append(Issue("warning", f"Unknown status '{status}' — defaulted to active"))
