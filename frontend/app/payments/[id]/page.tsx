@@ -33,6 +33,17 @@ function formatInr(amount: number | null): string | null {
   }).format(amount)}`;
 }
 
+/** Format a native amount with its 3-letter currency code, or null when absent. */
+function formatNativeAmount(
+  amount: number | null,
+  currency: string,
+): string | null {
+  if (amount == null) return null;
+  return `${new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+  }).format(amount)} ${currency}`;
+}
+
 export default function PaymentDetailPage({
   params,
 }: {
@@ -134,6 +145,21 @@ export default function PaymentDetailPage({
                   )
                 }
               />
+              <Field label="Currency" value={payment.currency} />
+              <Field
+                label="Amount"
+                value={formatNativeAmount(payment.amount, payment.currency)}
+              />
+              <Field
+                label="Rate to USD"
+                value={
+                  payment.currency !== "USD" && payment.fx_to_usd != null
+                    ? `1 ${payment.currency} = ${payment.fx_to_usd} USD`
+                    : payment.currency === "USD"
+                      ? "1.0000"
+                      : null
+                }
+              />
               <Field
                 label="Amount (USD)"
                 value={
@@ -143,6 +169,11 @@ export default function PaymentDetailPage({
                 }
               />
               <Field label="Amount (INR)" value={formatInr(payment.amount_inr)} />
+              <Field
+                label="Mode of payment"
+                value={payment.mode_of_payment}
+              />
+              <Field label="Notified" value={payment.notified ? "Yes" : "No"} />
               <Field
                 label="Payment date"
                 value={formatDate(payment.payment_date)}

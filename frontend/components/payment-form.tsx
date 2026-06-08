@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 
 import { paymentStatusLabel } from "@/components/payment-status-badge";
 import type {
+  CurrencyRef,
   PaymentCreate,
   PaymentStatus,
   ProjectListItem,
   WebsiteListItem,
 } from "@/lib/types";
+import { getCurrencies } from "@/services/lookup-service";
 import { listProjects } from "@/services/project-service";
 import { listWebsites } from "@/services/website-service";
 
@@ -47,12 +49,20 @@ export function PaymentForm({
   const [projectId, setProjectId] = useState(initial?.project_id ?? "");
   const [websiteId, setWebsiteId] = useState(initial?.website_id ?? "");
   const [liveLink, setLiveLink] = useState(initial?.live_link ?? "");
-  const [amountUsd, setAmountUsd] = useState(
-    initial?.amount_usd != null ? String(initial.amount_usd) : "",
+  const [currency, setCurrency] = useState(initial?.currency ?? "USD");
+  const [amount, setAmount] = useState(
+    initial?.amount != null ? String(initial.amount) : "",
+  );
+  const [fxToUsd, setFxToUsd] = useState(
+    initial?.fx_to_usd != null ? String(initial.fx_to_usd) : "",
   );
   const [amountInr, setAmountInr] = useState(
     initial?.amount_inr != null ? String(initial.amount_inr) : "",
   );
+  const [modeOfPayment, setModeOfPayment] = useState(
+    initial?.mode_of_payment ?? "",
+  );
+  const [notified, setNotified] = useState(initial?.notified ?? false);
   const [invoiceLink, setInvoiceLink] = useState(initial?.invoice_link ?? "");
   const [paymentDate, setPaymentDate] = useState(initial?.payment_date ?? "");
   const [transactionId, setTransactionId] = useState(
@@ -63,17 +73,20 @@ export function PaymentForm({
 
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [websites, setWebsites] = useState<WebsiteListItem[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      // Resolve projects + websites independently so one failing pick does not
-      // blank the other.
-      const [projectsRes, websitesRes] = await Promise.allSettled([
-        listProjects({ page: 1, page_size: 200, sort: "name" }),
-        listWebsites({ page: 1, page_size: 200, sort: "domain" }),
-      ]);
+      // Resolve projects + websites + currencies independently so one failing
+      // pick does not blank the others.
+      const [projectsRes, websitesRes, currenciesRes] =
+        await Promise.allSettled([
+          listProjects({ page: 1, page_size: 200, sort: "name" }),
+          listWebsites({ page: 1, page_size: 200, sort: "domain" }),
+          getCurrencies(),
+        ]);
       if (!active) return;
       if (projectsRes.status === "fulfilled") {
         setProjects(projectsRes.value.items);
@@ -81,9 +94,13 @@ export function PaymentForm({
       if (websitesRes.status === "fulfilled") {
         setWebsites(websitesRes.value.items);
       }
+      if (currenciesRes.status === "fulfilled") {
+        setCurrencies(currenciesRes.value);
+      }
       if (
         projectsRes.status === "rejected" ||
-        websitesRes.status === "rejected"
+        websitesRes.status === "rejected" ||
+        currenciesRes.status === "rejected"
       ) {
         setLookupError(
           "Some pickers could not load. You can still fill the other fields.",
@@ -95,14 +112,29 @@ export function PaymentForm({
     };
   }, []);
 
+  const isUsd = currency === "USD";
+  const amountNum = Number(amount);
+  const fxNum = Number(fxToUsd);
+  const previewUsd =
+    !isUsd && amount.trim() !== "" && fxToUsd.trim() !== "" &&
+    Number.isFinite(amountNum) && Number.isFinite(fxNum)
+      ? amountNum * fxNum
+      : null;
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const values: PaymentCreate = {
       project_id: projectId || null,
       website_id: websiteId || null,
       live_link: liveLink.trim() || null,
-      amount_usd: toNumberOrNull(amountUsd),
+      currency,
+      amount: toNumberOrNull(amount),
+      // The server derives amount_usd from amount * fx_to_usd (USD ⇒ rate 1),
+      // so only send a rate when the currency is not USD.
+      fx_to_usd: isUsd ? null : toNumberOrNull(fxToUsd),
       amount_inr: toNumberOrNull(amountInr),
+      mode_of_payment: modeOfPayment.trim() || null,
+      notified,
       invoice_link: invoiceLink.trim() || null,
       payment_date: paymentDate || null,
       transaction_id: transactionId.trim() || null,
@@ -163,19 +195,62 @@ export function PaymentForm({
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="amount_usd" className={labelClass}>
-            Amount (USD)
+          <label htmlFor="currency" className={labelClass}>
+            Currency
+          </label>
+          <select
+            id="currency"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className={inputClass}
+          >
+            {currencies.length === 0 && (
+              <option value={currency}>{currency}</option>
+            )}
+            {currencies.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.code} — {c.name} ({c.symbol})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="amount" className={labelClass}>
+            Amount ({currency})
           </label>
           <input
-            id="amount_usd"
+            id="amount"
             type="number"
             min={0}
             step="0.01"
-            value={amountUsd}
-            onChange={(e) => setAmountUsd(e.target.value)}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
             className={inputClass}
           />
         </div>
+
+        {!isUsd && (
+          <div className="space-y-1.5">
+            <label htmlFor="fx_to_usd" className={labelClass}>
+              Rate to USD (1 {currency} = ? USD)
+            </label>
+            <input
+              id="fx_to_usd"
+              type="number"
+              min={0}
+              step="0.0001"
+              value={fxToUsd}
+              onChange={(e) => setFxToUsd(e.target.value)}
+              className={inputClass}
+            />
+            {previewUsd != null && (
+              <p className="text-xs text-muted-foreground">
+                ≈ ${previewUsd.toFixed(2)} USD
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <label htmlFor="amount_inr" className={labelClass}>
@@ -188,6 +263,20 @@ export function PaymentForm({
             step="0.01"
             value={amountInr}
             onChange={(e) => setAmountInr(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="mode_of_payment" className={labelClass}>
+            Mode of payment
+          </label>
+          <input
+            id="mode_of_payment"
+            type="text"
+            value={modeOfPayment}
+            onChange={(e) => setModeOfPayment(e.target.value)}
+            placeholder="PayPal / Payoneer / Stripe / Client-direct / Free"
             className={inputClass}
           />
         </div>
@@ -234,6 +323,19 @@ export function PaymentForm({
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="flex items-center gap-2 sm:pt-7">
+          <input
+            id="notified"
+            type="checkbox"
+            checked={notified}
+            onChange={(e) => setNotified(e.target.checked)}
+            className="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-ring"
+          />
+          <label htmlFor="notified" className={labelClass}>
+            Notified
+          </label>
         </div>
       </div>
 

@@ -11,11 +11,13 @@ import {
 } from "@/components/payment-status-badge";
 import { ApiError } from "@/lib/api";
 import type {
+  CurrencyRef,
   PaymentListItem,
   PaymentStatus,
   ProjectListItem,
 } from "@/lib/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { getCurrencies } from "@/services/lookup-service";
 import { listPayments, removePayment } from "@/services/payment-service";
 import { listProjects } from "@/services/project-service";
 
@@ -54,6 +56,7 @@ export default function PaymentsPage() {
 
   // Filter pickers.
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
 
   // Debounce the search box into the active `search` filter.
   useEffect(() => {
@@ -64,25 +67,34 @@ export default function PaymentsPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  // Load filter pickers once.
+  // Load filter pickers + currency symbols once.
   useEffect(() => {
     let active = true;
     (async () => {
-      try {
-        const res = await listProjects({
-          page: 1,
-          page_size: 200,
-          sort: "name",
-        });
-        if (active) setProjects(res.items);
-      } catch {
-        // Non-fatal: the project filter just stays empty.
+      const [projectsRes, currenciesRes] = await Promise.allSettled([
+        listProjects({ page: 1, page_size: 200, sort: "name" }),
+        getCurrencies(),
+      ]);
+      if (!active) return;
+      // Non-fatal: a failed pick just leaves that helper empty.
+      if (projectsRes.status === "fulfilled") {
+        setProjects(projectsRes.value.items);
+      }
+      if (currenciesRes.status === "fulfilled") {
+        setCurrencies(currenciesRes.value);
       }
     })();
     return () => {
       active = false;
     };
   }, []);
+
+  /** Resolve a currency code to its symbol, falling back to the code itself. */
+  const currencySymbol = useCallback(
+    (code: string): string =>
+      currencies.find((c) => c.code === code)?.symbol ?? code,
+    [currencies],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -245,12 +257,11 @@ export default function PaymentsPage() {
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Project</th>
                   <th className="px-4 py-3 font-medium">Website</th>
-                  <th className="px-4 py-3 text-right font-medium">
-                    Amount USD
-                  </th>
+                  <th className="px-4 py-3 text-right font-medium">Amount</th>
                   <th className="px-4 py-3 text-right font-medium">
                     Amount INR
                   </th>
+                  <th className="px-4 py-3 font-medium">Mode</th>
                   <th className="px-4 py-3 font-medium">Payment date</th>
                   <th className="px-4 py-3 font-medium">Transaction ID</th>
                   <th className="px-4 py-3 font-medium">Status</th>
@@ -274,13 +285,44 @@ export default function PaymentsPage() {
                     <td className="px-4 py-3 text-muted-foreground">
                       {p.website_domain ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">
-                      {p.amount_usd != null
-                        ? formatCurrency(p.amount_usd)
-                        : "—"}
+                    <td className="px-4 py-3 text-right">
+                      {p.amount != null ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-foreground">
+                            {currencySymbol(p.currency)}
+                            {new Intl.NumberFormat("en-US", {
+                              maximumFractionDigits: 2,
+                            }).format(p.amount)}
+                          </span>
+                          {p.currency !== "USD" && p.amount_usd != null && (
+                            <span className="text-xs text-muted-foreground">
+                              ≈ {formatCurrency(p.amount_usd)}
+                            </span>
+                          )}
+                        </div>
+                      ) : p.amount_usd != null ? (
+                        <span className="text-muted-foreground">
+                          {formatCurrency(p.amount_usd)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right text-muted-foreground">
                       {formatInr(p.amount_inr)}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span>{p.mode_of_payment ?? "—"}</span>
+                        {p.notified && (
+                          <span
+                            title="Client notified"
+                            className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary"
+                          >
+                            Notified
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {formatDate(p.payment_date)}

@@ -198,6 +198,12 @@ export interface LanguageRef {
   name: string;
 }
 
+export interface CurrencyRef {
+  code: string;
+  symbol: string;
+  name: string;
+}
+
 export interface UserSummary {
   id: string;
   full_name: string;
@@ -559,8 +565,13 @@ export interface PaymentListItem {
   website_id: string | null;
   website_domain: string | null;
   live_link: string | null;
+  currency: string;
+  amount: number | null;
+  fx_to_usd: number | null;
   amount_usd: number | null;
   amount_inr: number | null;
+  mode_of_payment: string | null;
+  notified: boolean;
   invoice_link: string | null;
   payment_date: string | null;
   transaction_id: string | null;
@@ -587,8 +598,13 @@ export interface PaymentCreate {
   project_id?: string | null;
   website_id?: string | null;
   live_link?: string | null;
+  currency?: string;
+  amount?: number | null;
+  fx_to_usd?: number | null;
   amount_usd?: number | null;
   amount_inr?: number | null;
+  mode_of_payment?: string | null;
+  notified?: boolean;
   invoice_link?: string | null;
   payment_date?: string | null;
   transaction_id?: string | null;

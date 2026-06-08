@@ -9,6 +9,7 @@
 import { api, ApiError } from "@/lib/api";
 import type {
   CountryRef,
+  CurrencyRef,
   LanguageRef,
   NicheRef,
   UserSummary,
@@ -24,6 +25,10 @@ export function getNiches(): Promise<NicheRef[]> {
 
 export function getLanguages(): Promise<LanguageRef[]> {
   return api.get<LanguageRef[]>("/lookups/languages");
+}
+
+export function getCurrencies(): Promise<CurrencyRef[]> {
+  return api.get<CurrencyRef[]>("/lookups/currencies");
 }
 
 export async function getUsers(): Promise<UserSummary[]> {
