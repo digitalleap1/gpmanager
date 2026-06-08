@@ -65,6 +65,17 @@ class ArchiveRequest(BaseModel):
     archived: bool
 
 
+class BulkAssignRequest(BaseModel):
+    project_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    assignee_id: uuid.UUID | None = None
+    team_lead_id: uuid.UUID | None = None
+
+
+class BulkAssignResult(BaseModel):
+    updated: int
+    skipped: int
+
+
 class MemberCreate(BaseModel):
     user_id: uuid.UUID
     role_label: str | None = Field(default=None, max_length=60)

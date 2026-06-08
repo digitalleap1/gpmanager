@@ -154,6 +154,57 @@ class ProjectService:
         self.db.refresh(p)
         return p
 
+    def bulk_assign(
+        self,
+        project_ids: list[uuid.UUID],
+        assignee_id: uuid.UUID | None,
+        team_lead_id: uuid.UUID | None,
+    ) -> tuple[int, int]:
+        """Assign many projects at once. Admin = any project; team lead = only
+        projects in scope, and only to members they may assign. Returns
+        (updated, skipped)."""
+        if not is_manager(self.user):
+            raise PermissionDenied("Only managers can assign projects")
+        if assignee_id is None and team_lead_id is None:
+            raise BadRequest("Provide an assignee and/or a team lead")
+        ensure_assignable(self.db, self.user, assignee_id)
+        ensure_assignable(self.db, self.user, team_lead_id)
+
+        notifier = Notifier(self.db)
+        updated = 0
+        skipped = 0
+        for pid in project_ids:
+            p = self.projects.get_for_company(pid, self.company_id)
+            if p is None or not self._visible(p):
+                skipped += 1
+                continue
+            if assignee_id is not None:
+                p.assignee_id = assignee_id
+            if team_lead_id is not None:
+                p.team_lead_id = team_lead_id
+            updated += 1
+        if assignee_id is not None and updated:
+            notifier.notify(
+                company_id=self.company_id,
+                user_id=assignee_id,
+                type="project_assigned",
+                title="Projects assigned",
+                body=f"You were assigned to {updated} project(s).",
+                entity_type="project",
+                entity_id=None,
+            )
+        self.activity.record(
+            company_id=self.company_id,
+            user_id=self.user.id,
+            action="project.bulk_assigned",
+            module="project",
+            entity_type="project",
+            entity_id=None,
+            new={"updated": updated, "assignee": str(assignee_id) if assignee_id else None},
+        )
+        self.db.commit()
+        return updated, skipped
+
     def delete(self, project_id: uuid.UUID) -> None:
         if not is_admin(self.user):
             raise PermissionDenied("Only admins can delete projects")

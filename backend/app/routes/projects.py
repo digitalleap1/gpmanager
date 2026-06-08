@@ -14,6 +14,8 @@ from app.schemas.common_bulk import ImportResult
 from app.schemas.goal import BudgetSet, GoalSet, MonthlyBudgetRead, MonthlyGoalRead
 from app.schemas.project import (
     ArchiveRequest,
+    BulkAssignRequest,
+    BulkAssignResult,
     MemberCreate,
     MemberRead,
     ProjectCreate,
@@ -103,6 +105,16 @@ async def import_projects(
 ) -> ImportResult:
     content = await file.read()
     return ProjectService(db, user).import_file(file.filename or "upload.csv", content)
+
+
+@router.post("/bulk-assign", response_model=BulkAssignResult)
+def bulk_assign_projects(
+    body: BulkAssignRequest, user: CurrentUser, db: DbSession
+) -> BulkAssignResult:
+    updated, skipped = ProjectService(db, user).bulk_assign(
+        body.project_ids, body.assignee_id, body.team_lead_id
+    )
+    return BulkAssignResult(updated=updated, skipped=skipped)
 
 
 @router.get("/{project_id}", response_model=ProjectDetail)
