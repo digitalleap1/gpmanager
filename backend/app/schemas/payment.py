@@ -11,7 +11,7 @@ from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
 from app.models.payment import Payment, PaymentStatusHistory
 from app.schemas.refs import UserRef
 
-PAYMENT_STATUSES = {"pending", "approved", "paid", "failed"}
+PAYMENT_STATUSES = {"pending", "negotiation", "paid", "free", "cancelled", "rejected"}
 
 
 def _validate_status(value: str) -> str:
@@ -30,9 +30,13 @@ def _validate_currency(value: str | None) -> str | None:
 
 
 class PaymentCreate(BaseModel):
+    client_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     website_id: uuid.UUID | None = None
     guest_post_id: uuid.UUID | None = None
+    attributed_to_id: uuid.UUID | None = None
+    via: str | None = Field(default=None, max_length=20)
+    invoice_number: str | None = Field(default=None, max_length=120)
     live_link: str | None = Field(default=None, max_length=700)
     # Native charge currency + amount, plus a manual rate to USD. amount_usd is
     # derived from amount * fx_to_usd when amount is given (else taken as posted).
@@ -61,9 +65,13 @@ class PaymentCreate(BaseModel):
 
 
 class PaymentUpdate(BaseModel):
+    client_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     website_id: uuid.UUID | None = None
     guest_post_id: uuid.UUID | None = None
+    attributed_to_id: uuid.UUID | None = None
+    via: str | None = Field(default=None, max_length=20)
+    invoice_number: str | None = Field(default=None, max_length=120)
     live_link: str | None = Field(default=None, max_length=700)
     currency: str | None = None
     amount: float | None = Field(default=None, ge=0)
@@ -120,10 +128,14 @@ class PaymentStatusHistoryRead(BaseModel):
 
 class PaymentListItem(BaseModel):
     id: uuid.UUID
+    client_id: uuid.UUID | None
+    client_name: str | None
     project_id: uuid.UUID | None
     project_name: str | None
     website_id: uuid.UUID | None
     website_domain: str | None
+    attributed_to: UserRef | None
+    via: str | None
     live_link: str | None
     currency: str
     amount: float | None
@@ -131,6 +143,7 @@ class PaymentListItem(BaseModel):
     amount_usd: float | None
     amount_inr: float | None
     mode_of_payment: str | None
+    invoice_number: str | None
     notified: bool
     invoice_link: str | None
     payment_date: date | None
@@ -142,12 +155,17 @@ class PaymentListItem(BaseModel):
 
     @classmethod
     def from_payment(cls, p: Payment) -> PaymentListItem:
+        attributed = p.attributed_to
         return cls(
             id=p.id,
+            client_id=p.client_id,
+            client_name=p.client.name if p.client else None,
             project_id=p.project_id,
             project_name=p.project.name if p.project else None,
             website_id=p.website_id,
             website_domain=p.website.domain if p.website else None,
+            attributed_to=UserRef(id=attributed.id, full_name=attributed.full_name) if attributed else None,
+            via=p.via,
             live_link=p.live_link,
             currency=p.currency or "USD",
             amount=float(p.amount) if p.amount is not None else None,
@@ -155,6 +173,7 @@ class PaymentListItem(BaseModel):
             amount_usd=float(p.amount_usd) if p.amount_usd is not None else None,
             amount_inr=float(p.amount_inr) if p.amount_inr is not None else None,
             mode_of_payment=p.mode_of_payment,
+            invoice_number=p.invoice_number,
             notified=p.notified,
             invoice_link=p.invoice_link,
             payment_date=p.payment_date,

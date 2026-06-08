@@ -56,5 +56,7 @@ from app.models.notification import Notification  # noqa: F401
 from app.models.team import Team, team_members  # noqa: F401
 # Phase 2 — Import engine (audit log + rollback)
 from app.models.import_batch import ImportBatch, ImportRecord  # noqa: F401
+# Phase 2 — Clients (payments ledger)
+from app.models.client import Client  # noqa: F401
 # Module 11 — Activity logs
 # from app.models.activity_log import ActivityLog  # noqa: F401

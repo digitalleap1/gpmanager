@@ -17,6 +17,7 @@ PROJECT_STATUSES = {"active", "completed", "hold", "cancelled"}
 
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=180)
+    client_id: uuid.UUID | None = None
     main_niche_id: int | None = None
     project_niche_id: int | None = None
     target_country_id: int | None = None
@@ -39,6 +40,7 @@ class ProjectCreate(BaseModel):
 
 class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=180)
+    client_id: uuid.UUID | None = None
     main_niche_id: int | None = None
     project_niche_id: int | None = None
     target_country_id: int | None = None
@@ -85,6 +87,8 @@ class MemberRead(BaseModel):
 class ProjectListItem(BaseModel):
     id: uuid.UUID
     name: str
+    client_id: uuid.UUID | None
+    client_name: str | None
     status: str
     is_archived: bool
     monthly_budget: float
@@ -103,6 +107,8 @@ class ProjectListItem(BaseModel):
         return cls(
             id=p.id,
             name=p.name,
+            client_id=p.client_id,
+            client_name=p.client.name if p.client else None,
             status=p.status,
             is_archived=p.is_archived,
             monthly_budget=float(p.monthly_budget),

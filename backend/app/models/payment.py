@@ -10,6 +10,7 @@ from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.client import Client  # noqa: F401
 from app.models.project import Project  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.website import Website  # noqa: F401
@@ -20,6 +21,9 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     company_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clients.id", ondelete="SET NULL"), index=True
     )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL")
@@ -40,7 +44,13 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     amount_inr: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     mode_of_payment: Mapped[str | None] = mapped_column(String(60))
+    invoice_number: Mapped[str | None] = mapped_column(String(120))
     notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Team attribution: who produced/handled the link, and how (tool | manual).
+    attributed_to_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    via: Mapped[str | None] = mapped_column(String(20))
     invoice_link: Mapped[str | None] = mapped_column(String(700))
     payment_date: Mapped[date | None] = mapped_column(Date)
     transaction_id: Mapped[str | None] = mapped_column(String(120))
@@ -53,6 +63,10 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     project: Mapped[Project | None] = relationship(lazy="joined")
     website: Mapped[Website | None] = relationship(lazy="joined")
+    client: Mapped[Client | None] = relationship(lazy="joined")
+    attributed_to: Mapped[User | None] = relationship(
+        foreign_keys=[attributed_to_id], lazy="joined"
+    )
     status_history: Mapped[list[PaymentStatusHistory]] = relationship(
         back_populates="payment",
         cascade="all, delete-orphan",

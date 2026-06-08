@@ -23,6 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.client import Client  # noqa: F401
 from app.models.lookups import Country, Niche  # noqa: F401  (registers lookups)
 from app.models.user import User  # noqa: F401
 
@@ -32,6 +33,9 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     company_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clients.id", ondelete="SET NULL"), index=True
     )
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     main_niche_id: Mapped[int | None] = mapped_column(ForeignKey("niches.id", ondelete="SET NULL"))
@@ -55,6 +59,7 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     # Eager-loaded display relationships (foreign_keys disambiguate the 3 user FKs).
+    client: Mapped[Client | None] = relationship(foreign_keys=[client_id], lazy="joined")
     main_niche: Mapped[Niche | None] = relationship(foreign_keys=[main_niche_id], lazy="joined")
     project_niche: Mapped[Niche | None] = relationship(
         foreign_keys=[project_niche_id], lazy="joined"

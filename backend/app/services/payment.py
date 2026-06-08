@@ -196,7 +196,7 @@ class PaymentService:
     def _apply_status(self, p: Payment, new_status: str, note: str | None) -> None:
         old = p.status
         p.status = new_status
-        if new_status in ("approved", "paid") and p.approved_by is None:
+        if new_status == "paid" and p.approved_by is None:
             p.approved_by = self.user.id
         self.db.add(
             PaymentStatusHistory(
