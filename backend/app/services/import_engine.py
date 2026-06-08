@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_manager
 from app.models.import_batch import ImportBatch, ImportRecord
+from app.models.payment import Payment
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.import_engine import (
@@ -28,7 +29,7 @@ from app.services.activity import ActivityLogger
 from app.services.import_profiles import ExtractedRow, Issue, get_profile
 
 PREVIEW_ROW_CAP = 200
-ENTITY_MODELS = {"project": Project}
+ENTITY_MODELS = {"project": Project, "payment": Payment}
 
 
 class ImportEngine:
@@ -57,7 +58,7 @@ class ImportEngine:
             warnings = [i for i in issues if i.level == "warning"]
             warning_count += len(warnings)
             key = profile.dedupe_key(ex.canonical)
-            exists = key in ctx.projects_by_name
+            exists = profile.exists(key, ctx)
             if has_error:
                 status = "invalid"
                 invalid_count += 1
@@ -127,6 +128,13 @@ class ImportEngine:
             if errors_msgs:
                 errors += 1
                 self.db.add(self._record(batch, ex, "error", None, None, "; ".join(errors_msgs)))
+                continue
+            key = profile.dedupe_key(ex.canonical)
+            if getattr(profile, "on_duplicate", "update") == "skip" and profile.exists(key, ctx):
+                skipped += 1
+                self.db.add(
+                    self._record(batch, ex, "skipped", None, key, "duplicate — already imported")
+                )
                 continue
             try:
                 with self.db.begin_nested():

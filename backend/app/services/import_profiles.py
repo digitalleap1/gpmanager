@@ -18,11 +18,16 @@ from typing import Any
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
+from app.core.currencies import CURRENCY_CODES
 from app.core.exceptions import BadRequest
+from app.models.client import Client
 from app.models.lookups import Country, Niche
+from app.models.payment import Payment, PaymentStatusHistory
 from app.models.project import Project
 from app.models.user import User
 from app.services.bulk import parse_date, parse_number, parse_table
+
+PAYMENT_STATUSES = {"pending", "negotiation", "paid", "free", "cancelled", "rejected"}
 
 PROJECT_STATUSES = {"active", "completed", "hold", "cancelled"}
 
@@ -112,6 +117,10 @@ class ProjectProfileBase:
     """Shared validate/dedupe/apply for any profile that yields Project rows."""
 
     entity_type = "project"
+    on_duplicate = "update"  # re-importing the same project updates it
+
+    def exists(self, key: str, ctx: ResolveContext) -> bool:
+        return key in ctx.projects_by_name
 
     def build_context(self, db: Session, company_id: uuid.UUID) -> ResolveContext:
         ctx = ResolveContext()
@@ -377,19 +386,243 @@ def _jsonable(raw: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Payments ledger profile — the team's 50-tab "Guest Post Payments" workbook,
+# where each tab is one client and each row is one payment.
+# ---------------------------------------------------------------------------
+
+# Tabs that are not client ledgers.
+LEDGER_SKIP_TABS = {"index", "from feb ali projects"}
+# Header cells that identify the real header row within a tab.
+_HEADER_HINTS = ("live link", "amount", "mode of payment")
+
+
+@dataclass
+class PaymentContext:
+    clients: dict[str, Client] = field(default_factory=dict)
+    users: dict[str, User] = field(default_factory=dict)
+    seen: set[str] = field(default_factory=set)  # dedupe keys already in the DB
+
+
+def _classify_status(remarks: str, mode: str, amount: float | None) -> str:
+    r = (remarks or "").strip().lower()
+    m = (mode or "").strip().lower()
+    if "cancel" in r:
+        return "cancelled"
+    if "reject" in r:
+        return "rejected"
+    if "negotiat" in r or "in talk" in r or "discussion" in r:
+        return "negotiation"
+    if "free" in r or "free" in m or "no payment" in m or m in ("-", "--"):
+        return "free"
+    if "done" in r or "paid" in r:
+        return "paid"
+    if amount and amount > 0:
+        return "paid"
+    if not amount:
+        return "free" if not r else "pending"
+    return "pending"
+
+
+class PaymentsLedgerProfile:
+    """Reads every client tab of the Payments workbook into per-client payments."""
+
+    key = "payments_ledger"
+    label = "Payments — per-client ledger tabs"
+    description = "Your Payments workbook: each tab is a client, each row a payment."
+    entity_type = "payment"
+    on_duplicate = "skip"  # re-importing the same workbook skips rows already loaded
+    column_mapping = {
+        "client": "(tab name)", "payment_date": "Date", "live_link": "Live Links",
+        "mode_of_payment": "Mode of Payment", "amount": "Amount ($)",
+        "amount_inr": "INR / CAD", "remarks": "Remarks",
+        "transaction_id": "Transaction ID", "notified": "Notified?",
+        "website": "Website URL", "member": "Member Name",
+    }
+
+    # --- extract ---
+    def extract(self, filename: str, content: bytes) -> list[ExtractedRow]:
+        try:
+            wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        except Exception as exc:  # noqa: BLE001
+            raise BadRequest("Could not read the Excel file") from exc
+        out: list[ExtractedRow] = []
+        for sheet_name in wb.sheetnames:
+            if sheet_name.strip().lower() in LEDGER_SKIP_TABS:
+                continue
+            ws = wb[sheet_name]
+            rows = list(ws.iter_rows(values_only=True))
+            header_idx = self._find_header(rows)
+            if header_idx is None:
+                continue
+            headers = [(_s(h)).lower() for h in rows[header_idx]]
+            index = {h: i for i, h in enumerate(headers) if h}
+            for offset, values in enumerate(rows[header_idx + 1 :], start=header_idx + 2):
+                if values is None or all(c is None for c in values):
+                    continue
+                canonical = self._map_row(sheet_name, headers, index, list(values))
+                if canonical is None:
+                    continue
+                raw = _jsonable(
+                    {h: values[i] if i < len(values) else None for i, h in enumerate(headers) if h}
+                )
+                raw["__client__"] = sheet_name
+                out.append(
+                    ExtractedRow(row_number=offset, raw=raw, canonical=canonical, source=sheet_name)
+                )
+        wb.close()
+        return out
+
+    @staticmethod
+    def _find_header(rows: list) -> int | None:
+        for i, row in enumerate(rows[:8]):
+            cells = [(_s(c)).lower() for c in (row or [])]
+            if any(any(hint in c for hint in _HEADER_HINTS) for c in cells):
+                return i
+        return None
+
+    def _map_row(self, client: str, headers, index, values) -> dict | None:
+        def cell(*names: str) -> str:
+            for name in names:
+                for h, i in index.items():
+                    if name in h:
+                        return _s(values[i]) if i < len(values) else ""
+            return ""
+
+        live_link = cell("live link")
+        amount = _safe_number(cell("amount ($)", "amount($)", "amount"))
+        remarks = cell("remarks")
+        mode = cell("mode of payment", "mode")
+        # A row with no link and no amount is a spacer / note — skip it.
+        if not live_link and amount is None and not remarks:
+            return None
+        local = _safe_number(cell("inr", "cad", "local"))
+        return {
+            "client": client.strip(),
+            "live_link": live_link,
+            "amount": amount,
+            "amount_inr": local,
+            "mode_of_payment": mode,
+            "payment_date": _safe_date(self._raw_cell(index, values, "date")),
+            "transaction_id": cell("transaction"),
+            "remarks": remarks,
+            "website": cell("website"),
+            "member": cell("member"),
+            "notified": _truthy(cell("notified")),
+            "status": _classify_status(remarks, mode, amount),
+        }
+
+    @staticmethod
+    def _raw_cell(index, values, name):
+        for h, i in index.items():
+            if name in h:
+                return values[i] if i < len(values) else None
+        return None
+
+    # --- context / validate / dedupe / apply ---
+    def build_context(self, db: Session, company_id: uuid.UUID) -> PaymentContext:
+        ctx = PaymentContext()
+        for c in db.query(Client).filter(Client.company_id == company_id).all():
+            ctx.clients[c.name.strip().lower()] = c
+        for u in db.query(User).filter(User.company_id == company_id).all():
+            ctx.users[u.full_name.strip().lower()] = u
+            ctx.users[u.email.lower()] = u
+        for p in db.query(Payment).filter(Payment.company_id == company_id).all():
+            ctx.seen.add(self._key(p.client.name if p.client else "", p.live_link, p.amount, p.payment_date))
+        return ctx
+
+    @staticmethod
+    def _key(client, live_link, amount, pay_date) -> str:
+        d = pay_date.isoformat() if hasattr(pay_date, "isoformat") else (pay_date or "")
+        return f"{(client or '').strip().lower()}|{(live_link or '').strip().lower()}|{amount or ''}|{d}"
+
+    def dedupe_key(self, canonical: dict) -> str:
+        return self._key(
+            canonical.get("client"), canonical.get("live_link"),
+            canonical.get("amount"), canonical.get("payment_date"),
+        )
+
+    def exists(self, key: str, ctx: PaymentContext) -> bool:
+        return key in ctx.seen
+
+    def validate(self, canonical: dict, ctx: PaymentContext) -> list[Issue]:
+        issues: list[Issue] = []
+        if not canonical.get("client"):
+            issues.append(Issue("error", "Client (tab name) is missing"))
+        if canonical.get("amount") is None and canonical.get("status") != "free":
+            issues.append(Issue("warning", "No amount — treated as the classified status"))
+        member = (canonical.get("member") or "").strip()
+        if member and ctx.users.get(member.lower()) is None:
+            issues.append(Issue("warning", f"Member '{member}' not matched to a user"))
+        return issues
+
+    def apply(self, db, company_id, user_id, canonical, ctx: PaymentContext) -> ApplyOutcome:
+        client_name = (canonical.get("client") or "").strip()
+        client = ctx.clients.get(client_name.lower())
+        if client is None:
+            client = Client(company_id=company_id, name=client_name, created_by=user_id)
+            db.add(client)
+            db.flush()
+            ctx.clients[client_name.lower()] = client
+
+        member = ctx.users.get((canonical.get("member") or "").strip().lower())
+        amount = canonical.get("amount")
+        amount_usd = round(float(amount), 2) if amount is not None else None
+        status = canonical.get("status") if canonical.get("status") in PAYMENT_STATUSES else "pending"
+        payment = Payment(
+            company_id=company_id,
+            client_id=client.id,
+            created_by=user_id,
+            currency="USD",
+            amount=amount,
+            fx_to_usd=1.0 if amount is not None else None,
+            amount_usd=amount_usd,
+            amount_inr=canonical.get("amount_inr"),
+            live_link=canonical.get("live_link") or None,
+            mode_of_payment=canonical.get("mode_of_payment") or None,
+            payment_date=canonical.get("payment_date"),
+            transaction_id=(canonical.get("transaction_id") or None),
+            remarks=canonical.get("remarks") or None,
+            notified=bool(canonical.get("notified")),
+            attributed_to_id=member.id if member else None,
+            status=status,
+        )
+        db.add(payment)
+        db.flush()
+        db.add(
+            PaymentStatusHistory(
+                payment_id=payment.id, from_status=None, to_status=status,
+                changed_by=user_id, note="imported",
+            )
+        )
+        ctx.seen.add(self.dedupe_key(canonical))
+        return ApplyOutcome(action="created", entity_id=payment.id)
+
+
+def _safe_number(value) -> float | None:
+    try:
+        return parse_number(str(value)) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _truthy(value: str) -> bool:
+    return (value or "").strip().lower() in {"yes", "y", "true", "1", "done", "notified"}
+
+
 # --- registry ---
-_PROFILES: dict[str, ProjectProfileBase] = {
+_PROFILES: dict[str, object] = {
     p.key: p
-    for p in (ProjectsTemplateProfile(), MasterProjectsProfile())
+    for p in (ProjectsTemplateProfile(), MasterProjectsProfile(), PaymentsLedgerProfile())
 }
 
 
-def get_profile(key: str) -> ProjectProfileBase:
+def get_profile(key: str):
     profile = _PROFILES.get(key)
     if profile is None:
         raise BadRequest(f"Unknown import profile '{key}'")
     return profile
 
 
-def list_profiles() -> list[ProjectProfileBase]:
+def list_profiles() -> list:
     return list(_PROFILES.values())
