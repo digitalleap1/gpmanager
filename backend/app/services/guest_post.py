@@ -86,6 +86,15 @@ class GuestPostService:
             entity_id=gp.id,
             new={"website_name": gp.website_name, "project_id": str(gp.project_id)},
         )
+        Notifier(self.db).notify_admins(
+            company_id=self.company_id,
+            type="website_added",
+            title="Website added",
+            body=f"{self.user.full_name} added '{gp.website_name or 'a website'}' to a project.",
+            entity_type="guest_post",
+            entity_id=gp.id,
+            exclude=self.user.id,
+        )
         self.db.commit()
         self.db.refresh(gp)
         return gp

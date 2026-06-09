@@ -231,8 +231,21 @@ class PaymentService:
                 entity_id=p.id,
                 new={"from": old, "to": new_status},
             )
+        notifier = Notifier(self.db)
+        # Tell the requester/owner their payment was approved/rejected/changed.
+        for uid in {p.created_by, p.attributed_to_id}:
+            if uid and uid != self.user.id:
+                notifier.notify(
+                    company_id=self.company_id,
+                    user_id=uid,
+                    type="payment_status",
+                    title=f"Payment {new_status}",
+                    body=f"{self.user.full_name} marked your payment '{new_status}'.",
+                    entity_type="payment",
+                    entity_id=p.id,
+                )
         # Oversight: every payment status change pings the admins.
-        Notifier(self.db).notify_admins(
+        notifier.notify_admins(
             company_id=self.company_id,
             type="payment_status",
             title=f"Payment marked {new_status}",
