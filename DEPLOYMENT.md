@@ -134,6 +134,34 @@ If you outgrow these, moving just the backend to a free always-on host
 
 ---
 
+## Vercel import shows a "Services" / "multiple services" screen?
+
+If, when importing the repo, Vercel sets **Application Preset = "Services"**, lists
+both `frontend` and `backend`, and says *"vercel.json required to deploy projects
+with multiple services"* (the `experimentalServices` block) — **do not use that.**
+It happens because the Root Directory is `./` (the repo root), so Vercel sees both
+apps. The experimental multi-service mode is unreliable; use **two separate
+projects** instead:
+
+**Project 1 — Frontend**
+1. On the import screen, find **Root Directory** → click **Edit** → enter
+   **`frontend`**. The preset flips to **Next.js** and the "Services" warning
+   disappears.
+2. Add env var `NEXT_PUBLIC_API_URL` = your backend URL + `/api` (fill in after
+   Project 2 exists; you can edit it later).
+3. **Deploy.**
+
+**Project 2 — Backend** (Vercel → Add New → Project → import the **same** repo again)
+1. **Root Directory** → **Edit** → enter **`backend`**. Preset: **Other**
+   (it uses `backend/vercel.json` + `backend/api/index.py`).
+2. Add env vars `DATABASE_URL` (Neon), `SECRET_KEY` (any long random string),
+   `BACKEND_CORS_ORIGINS` (your frontend URL).
+3. **Deploy**, then go back to Project 1 and set `NEXT_PUBLIC_API_URL` to this
+   backend's URL + `/api`, and redeploy Project 1.
+
+(Remember the one-time Neon migration in **Option B → B2** before the backend will
+have any tables/admin.)
+
 ## Notes / troubleshooting
 
 - **Login fails / network error in the browser** → `NEXT_PUBLIC_API_URL` is wrong
