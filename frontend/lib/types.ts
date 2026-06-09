@@ -265,6 +265,7 @@ export interface ProjectListItem {
   status: string;
   is_archived: boolean;
   monthly_budget: number;
+  budget_currency: string;
   target_links: number;
   due_date: string | null;
   main_niche: NicheRef | null;
@@ -297,6 +298,14 @@ export interface ProjectMember {
   role_label: string | null;
 }
 
+/** A single comment thread entry on a project (`GET /projects/{id}/comments`). */
+export interface ProjectComment {
+  id: string;
+  author: UserRef | null;
+  body: string;
+  created_at: string;
+}
+
 export interface ProjectDetail extends ProjectListItem {
   goal: string | null;
   notes: string | null;
@@ -305,6 +314,7 @@ export interface ProjectDetail extends ProjectListItem {
   current_year: number;
   goals: MonthlyGoal[];
   budgets: MonthlyBudget[];
+  comments: ProjectComment[];
 }
 
 export interface ProjectCreate {
@@ -315,6 +325,7 @@ export interface ProjectCreate {
   assignee_id?: string | null;
   team_lead_id?: string | null;
   monthly_budget?: number;
+  budget_currency?: string;
   target_links?: number;
   goal?: string | null;
   due_date?: string | null;

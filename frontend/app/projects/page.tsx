@@ -557,6 +557,11 @@ export default function ProjectsPage() {
                       {p.assignee?.full_name ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-right text-muted-foreground">
+                      {p.budget_currency && p.budget_currency !== "USD" && (
+                        <span className="mr-1 text-xs uppercase">
+                          {p.budget_currency}
+                        </span>
+                      )}
                       {formatCurrency(p.monthly_budget)}
                     </td>
                     <td className="px-4 py-3 text-right text-muted-foreground">

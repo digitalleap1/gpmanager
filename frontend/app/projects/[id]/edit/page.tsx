@@ -74,6 +74,7 @@ export default function EditProjectPage({
         assignee_id: project.assignee?.id ?? null,
         team_lead_id: project.team_lead?.id ?? null,
         monthly_budget: project.monthly_budget,
+        budget_currency: project.budget_currency,
         target_links: project.target_links,
         status: project.status,
         due_date: project.due_date,

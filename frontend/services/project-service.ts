@@ -11,6 +11,7 @@ import type {
   MonthlyBudget,
   MonthlyGoal,
   Page,
+  ProjectComment,
   ProjectCreate,
   ProjectDetail,
   ProjectListItem,
@@ -140,6 +141,21 @@ export function addMember(
 
 export function removeMember(id: string, userId: string): Promise<void> {
   return api.delete<void>(`/projects/${id}/members/${userId}`);
+}
+
+/* --- Comments --- */
+
+/** List a project's comments (newest first). */
+export function listProjectComments(id: string): Promise<ProjectComment[]> {
+  return api.get<ProjectComment[]>(`/projects/${id}/comments`);
+}
+
+/** Post a new comment on a project. Notifies the assignee/lead + admins. */
+export function addProjectComment(
+  id: string,
+  body: string,
+): Promise<ProjectComment> {
+  return api.post<ProjectComment>(`/projects/${id}/comments`, { body });
 }
 
 /* --- Monthly goals --- */

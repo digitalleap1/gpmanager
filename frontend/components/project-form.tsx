@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 
 import type {
   CountryRef,
+  CurrencyRef,
   NicheRef,
   ProjectCreate,
   UserSummary,
 } from "@/lib/types";
 import {
   getCountries,
+  getCurrencies,
   getNiches,
   getUsers,
 } from "@/services/lookup-service";
@@ -58,6 +60,9 @@ export function ProjectForm({
   const [monthlyBudget, setMonthlyBudget] = useState(
     initial?.monthly_budget != null ? String(initial.monthly_budget) : "",
   );
+  const [budgetCurrency, setBudgetCurrency] = useState(
+    initial?.budget_currency ?? "USD",
+  );
   const [targetLinks, setTargetLinks] = useState(
     initial?.target_links != null ? String(initial.target_links) : "",
   );
@@ -69,21 +74,24 @@ export function ProjectForm({
   const [niches, setNiches] = useState<NicheRef[]>([]);
   const [countries, setCountries] = useState<CountryRef[]>([]);
   const [users, setUsers] = useState<UserSummary[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const [n, c, u] = await Promise.all([
+        const [n, c, u, cur] = await Promise.all([
           getNiches(),
           getCountries(),
           getUsers(),
+          getCurrencies(),
         ]);
         if (!active) return;
         setNiches(n);
         setCountries(c);
         setUsers(u);
+        setCurrencies(cur);
       } catch {
         if (active)
           setLookupError(
@@ -106,6 +114,7 @@ export function ProjectForm({
       assignee_id: assigneeId || null,
       team_lead_id: teamLeadId || null,
       monthly_budget: monthlyBudget === "" ? 0 : Number(monthlyBudget),
+      budget_currency: budgetCurrency,
       target_links: targetLinks === "" ? 0 : Number(targetLinks),
       status,
       due_date: dueDate || null,
@@ -258,15 +267,33 @@ export function ProjectForm({
           <label htmlFor="monthly_budget" className={labelClass}>
             Monthly budget
           </label>
-          <input
-            id="monthly_budget"
-            type="number"
-            min={0}
-            step="0.01"
-            value={monthlyBudget}
-            onChange={(e) => setMonthlyBudget(e.target.value)}
-            className={inputClass}
-          />
+          <div className="flex gap-2">
+            <input
+              id="monthly_budget"
+              type="number"
+              min={0}
+              step="0.01"
+              value={monthlyBudget}
+              onChange={(e) => setMonthlyBudget(e.target.value)}
+              className={`${inputClass} flex-1`}
+            />
+            <select
+              id="budget_currency"
+              aria-label="Budget currency"
+              value={budgetCurrency}
+              onChange={(e) => setBudgetCurrency(e.target.value)}
+              className={`${inputClass} w-28 shrink-0`}
+            >
+              {currencies.length === 0 && (
+                <option value={budgetCurrency}>{budgetCurrency}</option>
+              )}
+              {currencies.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} ({c.symbol})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="space-y-1.5">

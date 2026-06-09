@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ArchiveRestore, Pencil } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Send } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useState } from "react";
@@ -11,20 +11,47 @@ import { ApiError } from "@/lib/api";
 import type {
   MonthlyBudget,
   MonthlyGoal,
+  ProjectComment,
   ProjectDetail,
   ProjectMember,
   UserSummary,
 } from "@/lib/types";
-import { formatCurrency, formatDate, monthLabel } from "@/lib/utils";
+import { formatCurrency, formatDate, monthLabel, relativeTime } from "@/lib/utils";
 import { getUsers } from "@/services/lookup-service";
 import {
   addMember,
+  addProjectComment,
   archiveProject,
   getProject,
   removeMember,
   setBudget,
   setGoal,
 } from "@/services/project-service";
+
+/**
+ * Format a budget amount in its own currency. Falls back to a `CODE amount`
+ * string if the currency code is not a valid ISO code for `Intl`.
+ */
+function formatBudget(amount: number, currency: string): string {
+  const code = currency || "USD";
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 0,
+    }).format(amount ?? 0);
+  } catch {
+    return `${code} ${(amount ?? 0).toLocaleString("en-US")}`;
+  }
+}
+
+/** Build up-to-two-letter initials from a display name. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 export default function ProjectDetailPage({
   params,
@@ -38,6 +65,7 @@ export default function ProjectDetailPage({
   const [goals, setGoals] = useState<MonthlyGoal[]>([]);
   const [budgets, setBudgets] = useState<MonthlyBudget[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [comments, setComments] = useState<ProjectComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -52,6 +80,7 @@ export default function ProjectDetailPage({
       setGoals(data.goals);
       setBudgets(data.budgets);
       setMembers(data.members);
+      setComments(data.comments);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -176,7 +205,10 @@ export default function ProjectDetailPage({
               <Field label="Team lead" value={project.team_lead?.full_name} />
               <Field
                 label="Monthly budget"
-                value={formatCurrency(project.monthly_budget)}
+                value={formatBudget(
+                  project.monthly_budget,
+                  project.budget_currency,
+                )}
               />
               <Field label="Target links" value={project.target_links} />
               <Field label="Due date" value={formatDate(project.due_date)} />
@@ -231,6 +263,13 @@ export default function ProjectDetailPage({
             projectId={id}
             members={members}
             onChange={setMembers}
+          />
+
+          {/* Comments */}
+          <CommentsSection
+            projectId={id}
+            comments={comments}
+            onChange={setComments}
           />
         </div>
       ) : null}
@@ -592,6 +631,103 @@ function MembersSection({
         >
           {err}
         </p>
+      )}
+    </section>
+  );
+}
+
+function CommentsSection({
+  projectId,
+  comments,
+  onChange,
+}: {
+  projectId: string;
+  comments: ProjectComment[];
+  onChange: (next: ProjectComment[]) => void;
+}) {
+  const [body, setBody] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleAdd() {
+    const trimmed = body.trim();
+    if (trimmed === "") return;
+    setErr(null);
+    setPosting(true);
+    try {
+      const created = await addProjectComment(projectId, trimmed);
+      onChange([created, ...comments]);
+      setBody("");
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Unable to add comment.");
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-6 text-card-foreground">
+      <h2 className="text-sm font-semibold text-[#1A1F4D]">Comments</h2>
+
+      {/* Quick-add */}
+      <div className="mt-4 space-y-2">
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={3}
+          placeholder="Add a comment…"
+          disabled={posting}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={posting || body.trim() === ""}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            <Send className="h-4 w-4" />
+            {posting ? "Posting…" : "Comment"}
+          </button>
+        </div>
+      </div>
+
+      {err && (
+        <p
+          role="alert"
+          className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {err}
+        </p>
+      )}
+
+      {/* List */}
+      {comments.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">No comments yet.</p>
+      ) : (
+        <ul className="mt-5 space-y-4">
+          {comments.map((c) => {
+            const name = c.author?.full_name ?? "Unknown";
+            return (
+              <li key={c.id} className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                  {initials(name)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-sm font-medium">{name}</p>
+                    <span className="text-xs text-muted-foreground">
+                      {relativeTime(c.created_at)}
+                    </span>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+                    {c.body}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </section>
   );
