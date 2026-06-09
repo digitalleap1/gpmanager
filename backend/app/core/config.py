@@ -73,6 +73,24 @@ class Settings(BaseSettings):
         return self.SMTP_FROM or self.SMTP_USER
 
     @property
+    def database_uri(self) -> str:
+        """DATABASE_URL normalized to the psycopg (v3) driver.
+
+        Managed Postgres providers (Neon, Render, Supabase, Heroku) hand out
+        ``postgresql://`` or ``postgres://`` URLs, which SQLAlchemy would route to
+        psycopg2 (not installed). Rewrite the scheme so any provider URL works
+        with the bundled psycopg 3 driver — no manual editing needed.
+        """
+        url = self.DATABASE_URL
+        if url.startswith("postgresql+"):
+            return url  # already specifies a driver
+        if url.startswith("postgresql://"):
+            return "postgresql+psycopg://" + url[len("postgresql://"):]
+        if url.startswith("postgres://"):
+            return "postgresql+psycopg://" + url[len("postgres://"):]
+        return url
+
+    @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",") if origin.strip()]
 
