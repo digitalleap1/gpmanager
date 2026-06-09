@@ -97,6 +97,24 @@ export function bulkAssignProjects(
   });
 }
 
+/**
+ * Bulk-delete many projects at once, moving each (plus its linked payments &
+ * guest posts) to Trash where they remain recoverable. Manager-only and
+ * RBAC-scoped on the backend, so only projects the caller can see are removed.
+ * Requires the caller's own login `password`; a wrong password is rejected with
+ * a 400 ("Password confirmation is incorrect"). Returns how many rows were
+ * `deleted` vs `skipped`.
+ */
+export function bulkDeleteProjects(
+  projectIds: string[],
+  password: string,
+): Promise<{ deleted: number; skipped: number }> {
+  return api.post<{ deleted: number; skipped: number }>(
+    "/projects/bulk-delete",
+    { project_ids: projectIds, password },
+  );
+}
+
 /* --- Bulk import / export --- */
 
 /** Bulk-import projects from a `.csv` or `.xlsx` file (multipart upload). */

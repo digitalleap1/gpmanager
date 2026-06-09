@@ -49,6 +49,11 @@ const ENTITY_META: Record<string, EntityMeta> = {
     icon: CreditCard,
     cls: "bg-green-100 text-green-700",
   },
+  guest_post: {
+    label: "Guest post",
+    icon: FileText,
+    cls: "bg-amber-100 text-amber-700",
+  },
 };
 
 function metaFor(entityType: string): EntityMeta {

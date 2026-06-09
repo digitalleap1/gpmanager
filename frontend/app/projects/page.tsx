@@ -2,7 +2,13 @@
 
 import { Archive, ArchiveRestore, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { BulkBar, type FileFormat } from "@/components/bulk-bar";
@@ -18,6 +24,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   archiveProject,
   bulkAssignProjects,
+  bulkDeleteProjects,
   downloadProjectsTemplate,
   exportProjects,
   importProjects,
@@ -66,6 +73,9 @@ export default function ProjectsPage() {
   const [bulkTeamLeadId, setBulkTeamLeadId] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [assignResult, setAssignResult] = useState<string | null>(null);
+
+  // Bulk-delete (confirm modal) state.
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // Debounce the search box into the active `search` filter.
   useEffect(() => {
@@ -198,6 +208,23 @@ export default function ProjectsPage() {
     } finally {
       setAssigning(false);
     }
+  }
+
+  // Runs the bulk-delete. Resolves on success; throws on failure so the modal
+  // can surface `ApiError.message` inline without losing the entered password.
+  async function handleBulkDelete(password: string) {
+    const ids = [...selected];
+    const result = await bulkDeleteProjects(ids, password);
+    setAssignResult(
+      `Moved ${result.deleted} project${result.deleted === 1 ? "" : "s"} to Trash` +
+        (result.skipped > 0 ? ` · ${result.skipped} skipped` : "") +
+        ".",
+    );
+    setSelected(new Set());
+    setBulkAssigneeId("");
+    setBulkTeamLeadId("");
+    setDeleteOpen(false);
+    await load();
   }
 
   async function handleExport(format: FileFormat) {
@@ -428,6 +455,18 @@ export default function ProjectsPage() {
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  setActionError(null);
+                  setDeleteOpen(true);
+                }}
+                disabled={assigning}
+                className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+              <button
+                type="button"
                 onClick={clearSelection}
                 disabled={assigning}
                 className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
@@ -640,6 +679,158 @@ export default function ProjectsPage() {
           </div>
         )}
       </div>
+
+      {deleteOpen && (
+        <BulkDeleteModal
+          count={selected.size}
+          onClose={() => setDeleteOpen(false)}
+          onConfirm={handleBulkDelete}
+        />
+      )}
     </AppShell>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Bulk-delete confirm modal                                          */
+/* ------------------------------------------------------------------ */
+
+function BulkDeleteModal({
+  count,
+  onClose,
+  onConfirm,
+}: {
+  count: number;
+  onClose: () => void;
+  onConfirm: (password: string) => Promise<void>;
+}) {
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const plural = count === 1 ? "" : "s";
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length === 0) return;
+    setFormError(null);
+    setSubmitting(true);
+    try {
+      await onConfirm(password);
+      // On success the parent closes the modal.
+    } catch (err) {
+      setFormError(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to delete the selected projects. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal title="Delete projects" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5">
+        <p className="text-sm text-muted-foreground">
+          You&apos;re about to delete{" "}
+          <span className="font-medium text-foreground">
+            {count} project{plural}
+          </span>
+          . They — along with their linked payments &amp; guest posts — will be
+          moved to <span className="font-medium text-foreground">Trash</span>,
+          where they stay recoverable. This does not permanently delete anything;
+          purge from the Trash page when you&apos;re sure.
+        </p>
+
+        <p className="flex items-start gap-2 rounded-md bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <Trash2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Confirm with your password to continue.
+        </p>
+
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-foreground">
+            Your password
+          </span>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={submitting}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            placeholder="Enter your password"
+            autoFocus
+          />
+        </label>
+
+        {formError && (
+          <p
+            role="alert"
+            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {formError}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || password.length === 0}
+            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting
+              ? "Deleting…"
+              : `Delete ${count} project${plural}`}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared modal shell (matches the inline pattern used elsewhere)     */
+/* ------------------------------------------------------------------ */
+
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-[#1A1F4D]/40 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h2 className="text-base font-semibold text-[#1A1F4D]">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
