@@ -220,7 +220,7 @@ class GuestPostService:
     def stats(self) -> dict:
         """Role-scoped Guest Post Links widgets."""
         scope = self._scope()
-        base = [GuestPost.company_id == self.company_id]
+        base = [GuestPost.company_id == self.company_id, GuestPost.deleted_at.is_(None)]
         if scope is not None:
             base.append(
                 or_(
@@ -277,7 +277,8 @@ class GuestPostService:
             entity_id=gp.id,
             old={"website_name": gp.website_name},
         )
-        self.gps.delete(gp)
+        gp.deleted_at = datetime.now(timezone.utc)  # soft-delete -> Trash
+        gp.deleted_by = self.user.id
         self.db.commit()
 
     # --- internals ---

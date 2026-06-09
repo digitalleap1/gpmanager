@@ -12,13 +12,14 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_admin, is_manager
 from app.core.security import verify_password
 from app.models.client import Client
+from app.models.guest_post import GuestPost
 from app.models.payment import Payment
 from app.models.project import Project
 from app.models.user import User
@@ -32,6 +33,7 @@ ENTITIES: dict[str, tuple[type, Callable[[object], str]]] = {
     "client": (Client, lambda x: x.name),
     "website": (Website, lambda x: x.domain),
     "payment": (Payment, lambda x: f"{x.currency} {x.amount or ''} ({x.status})".strip()),
+    "guest_post": (GuestPost, lambda x: x.website_name or x.live_link or "guest post"),
 }
 
 
@@ -95,6 +97,15 @@ class TrashService:
     def restore(self, entity_type: str, entity_id: uuid.UUID) -> None:
         self._require_manager()
         row = self._get_deleted(entity_type, entity_id)
+        # Restore a project's co-trashed children (deleted in the same cascade).
+        if entity_type == "project":
+            ts = row.deleted_at
+            for child in (Payment, GuestPost):
+                self.db.execute(
+                    update(child)
+                    .where(child.project_id == entity_id, child.deleted_at == ts)
+                    .values(deleted_at=None, deleted_by=None)
+                )
         row.deleted_at = None
         row.deleted_by = None
         self.activity.record(
@@ -115,6 +126,15 @@ class TrashService:
         ):
             raise BadRequest("Password confirmation is incorrect")
         row = self._get_deleted(entity_type, entity_id)
+        # Permanently remove a project's trashed children too (payments are
+        # FK SET NULL so they would otherwise survive, orphaned).
+        if entity_type == "project":
+            for child in (Payment, GuestPost):
+                self.db.execute(
+                    delete(child).where(
+                        child.project_id == entity_id, child.deleted_at.is_not(None)
+                    )
+                )
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,

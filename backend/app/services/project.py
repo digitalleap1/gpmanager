@@ -7,13 +7,16 @@ from __future__ import annotations  # lazy annotations: the `list` method must n
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_manager
 from app.core.scope import accessible_user_ids
+from app.core.security import verify_password
+from app.models.guest_post import GuestPost
 from app.models.lookups import Country, Niche
+from app.models.payment import Payment
 from app.models.project import Project, ProjectComment, ProjectMember
 from app.models.user import User
 from app.repositories.project import ProjectRepository
@@ -206,13 +209,17 @@ class ProjectService:
         self.db.commit()
         return updated, skipped
 
-    def delete(self, project_id: uuid.UUID) -> None:
-        if not is_manager(self.user):
-            raise PermissionDenied("Only managers can delete projects")
-        p = self.get(project_id)
-        # Soft-delete: move to Trash (reversible) instead of removing.
-        p.deleted_at = datetime.now(timezone.utc)
+    def _soft_delete_project(self, p: Project, ts: datetime) -> None:
+        """Soft-delete a project AND cascade-trash its related payments + guest
+        posts using a shared timestamp (so a restore brings the group back)."""
+        p.deleted_at = ts
         p.deleted_by = self.user.id
+        for child in (Payment, GuestPost):
+            self.db.execute(
+                update(child)
+                .where(child.project_id == p.id, child.deleted_at.is_(None))
+                .values(deleted_at=ts, deleted_by=self.user.id)
+            )
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,
@@ -222,7 +229,35 @@ class ProjectService:
             entity_id=p.id,
             old={"name": p.name},
         )
+
+    def delete(self, project_id: uuid.UUID) -> None:
+        if not is_manager(self.user):
+            raise PermissionDenied("Only managers can delete projects")
+        p = self.get(project_id)
+        self._soft_delete_project(p, datetime.now(timezone.utc))
         self.db.commit()
+
+    def bulk_delete(self, project_ids: list[uuid.UUID], password: str) -> tuple[int, int]:
+        """Bulk soft-delete projects (+ their payments/guest posts) to Trash.
+        Requires the caller's password confirmation. Returns (deleted, skipped)."""
+        if not is_manager(self.user):
+            raise PermissionDenied("Only managers can delete projects")
+        if not self.user.hashed_password or not verify_password(
+            password, self.user.hashed_password
+        ):
+            raise BadRequest("Password confirmation is incorrect")
+        ts = datetime.now(timezone.utc)
+        deleted = 0
+        skipped = 0
+        for pid in project_ids:
+            p = self.projects.get_for_company(pid, self.company_id)
+            if p is None or not self._visible(p):
+                skipped += 1
+                continue
+            self._soft_delete_project(p, ts)
+            deleted += 1
+        self.db.commit()
+        return deleted, skipped
 
     def set_archived(self, project_id: uuid.UUID, archived: bool) -> Project:
         if not is_manager(self.user):

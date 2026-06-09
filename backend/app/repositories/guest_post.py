@@ -23,7 +23,11 @@ class GuestPostRepository(BaseRepository[GuestPost]):
 
     def get_for_company(self, gp_id: uuid.UUID, company_id: uuid.UUID) -> GuestPost | None:
         return self.db.scalars(
-            select(GuestPost).where(GuestPost.id == gp_id, GuestPost.company_id == company_id)
+            select(GuestPost).where(
+                GuestPost.id == gp_id,
+                GuestPost.company_id == company_id,
+                GuestPost.deleted_at.is_(None),
+            )
         ).first()
 
     def _filtered(
@@ -37,7 +41,9 @@ class GuestPostRepository(BaseRepository[GuestPost]):
         search: str | None,
         restrict_to_users: set[uuid.UUID] | None,
     ) -> Select:
-        stmt = select(GuestPost).where(GuestPost.company_id == company_id)
+        stmt = select(GuestPost).where(
+            GuestPost.company_id == company_id, GuestPost.deleted_at.is_(None)
+        )
         if project_id:
             stmt = stmt.where(GuestPost.project_id == project_id)
         if status:

@@ -16,6 +16,8 @@ from app.schemas.project import (
     ArchiveRequest,
     BulkAssignRequest,
     BulkAssignResult,
+    BulkDeleteRequest,
+    BulkDeleteResult,
     CommentCreate,
     CommentRead,
     MemberCreate,
@@ -117,6 +119,14 @@ def bulk_assign_projects(
         body.project_ids, body.assignee_id, body.team_lead_id
     )
     return BulkAssignResult(updated=updated, skipped=skipped)
+
+
+@router.post("/bulk-delete", response_model=BulkDeleteResult)
+def bulk_delete_projects(
+    body: BulkDeleteRequest, user: CurrentUser, db: DbSession
+) -> BulkDeleteResult:
+    deleted, skipped = ProjectService(db, user).bulk_delete(body.project_ids, body.password)
+    return BulkDeleteResult(deleted=deleted, skipped=skipped)
 
 
 @router.get("/{project_id}", response_model=ProjectDetail)

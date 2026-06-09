@@ -98,6 +98,16 @@ class BulkAssignResult(BaseModel):
     skipped: int
 
 
+class BulkDeleteRequest(BaseModel):
+    project_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    password: str = Field(min_length=1)
+
+
+class BulkDeleteResult(BaseModel):
+    deleted: int
+    skipped: int
+
+
 class MemberCreate(BaseModel):
     user_id: uuid.UUID
     role_label: str | None = Field(default=None, max_length=60)

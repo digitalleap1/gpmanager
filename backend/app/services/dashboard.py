@@ -117,7 +117,11 @@ class DashboardService:
                     select(func.count())
                     .select_from(GuestPost)
                     .join(Project, Project.id == GuestPost.project_id)
-                    .where(GuestPost.company_id == cid, GuestPost.status == "published")
+                    .where(
+                        GuestPost.company_id == cid,
+                        GuestPost.status == "published",
+                        GuestPost.deleted_at.is_(None),
+                    )
                 )
             )
             or 0

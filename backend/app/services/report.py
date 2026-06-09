@@ -72,7 +72,11 @@ class ReportService:
         published = dict(
             self.db.execute(
                 select(GuestPost.project_id, func.count())
-                .where(GuestPost.company_id == cid, GuestPost.status == "published")
+                .where(
+                    GuestPost.company_id == cid,
+                    GuestPost.status == "published",
+                    GuestPost.deleted_at.is_(None),
+                )
                 .group_by(GuestPost.project_id)
             ).all()
         )
@@ -281,7 +285,9 @@ class ReportService:
         **_,
     ) -> ReportResult:
         cid = self.company_id
-        stmt = select(GuestPost).where(GuestPost.company_id == cid)
+        stmt = select(GuestPost).where(
+            GuestPost.company_id == cid, GuestPost.deleted_at.is_(None)
+        )
         if self._uids is not None:
             stmt = stmt.where(
                 or_(
