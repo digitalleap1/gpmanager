@@ -7,12 +7,22 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.project import Project, ProjectMember
+from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
+from app.models.project import Project, ProjectComment, ProjectMember
 from app.schemas.goal import MonthlyBudgetRead, MonthlyGoalRead
 from app.schemas.lookup import CountryRead, NicheRead
 from app.schemas.refs import UserRef
 
 PROJECT_STATUSES = {"active", "completed", "hold", "cancelled"}
+
+
+def _validate_currency(value: str | None) -> str | None:
+    if value is None:
+        return None
+    code = value.upper()
+    if code not in CURRENCY_CODES:
+        raise ValueError(f"currency must be one of {sorted(CURRENCY_CODES)}")
+    return code
 
 
 class ProjectCreate(BaseModel):
@@ -24,6 +34,7 @@ class ProjectCreate(BaseModel):
     assignee_id: uuid.UUID | None = None
     team_lead_id: uuid.UUID | None = None
     monthly_budget: float = Field(default=0, ge=0)
+    budget_currency: str = DEFAULT_CURRENCY
     target_links: int = Field(default=0, ge=0)
     goal: str | None = None
     due_date: date | None = None
@@ -37,6 +48,11 @@ class ProjectCreate(BaseModel):
             raise ValueError(f"status must be one of {sorted(PROJECT_STATUSES)}")
         return value
 
+    @field_validator("budget_currency")
+    @classmethod
+    def _cur(cls, value: str) -> str:
+        return _validate_currency(value) or DEFAULT_CURRENCY
+
 
 class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=180)
@@ -47,6 +63,7 @@ class ProjectUpdate(BaseModel):
     assignee_id: uuid.UUID | None = None
     team_lead_id: uuid.UUID | None = None
     monthly_budget: float | None = Field(default=None, ge=0)
+    budget_currency: str | None = None
     target_links: int | None = Field(default=None, ge=0)
     goal: str | None = None
     due_date: date | None = None
@@ -59,6 +76,11 @@ class ProjectUpdate(BaseModel):
         if value is not None and value not in PROJECT_STATUSES:
             raise ValueError(f"status must be one of {sorted(PROJECT_STATUSES)}")
         return value
+
+    @field_validator("budget_currency")
+    @classmethod
+    def _cur(cls, value: str | None) -> str | None:
+        return _validate_currency(value)
 
 
 class ArchiveRequest(BaseModel):
@@ -103,6 +125,7 @@ class ProjectListItem(BaseModel):
     status: str
     is_archived: bool
     monthly_budget: float
+    budget_currency: str
     target_links: int
     due_date: date | None
     main_niche: NicheRead | None
@@ -123,6 +146,7 @@ class ProjectListItem(BaseModel):
             status=p.status,
             is_archived=p.is_archived,
             monthly_budget=float(p.monthly_budget),
+            budget_currency=p.budget_currency or "USD",
             target_links=p.target_links,
             due_date=p.due_date,
             main_niche=NicheRead.model_validate(p.main_niche) if p.main_niche else None,
@@ -141,11 +165,32 @@ class ProjectListItem(BaseModel):
         )
 
 
+class CommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class CommentRead(BaseModel):
+    id: uuid.UUID
+    author: UserRef | None
+    body: str
+    created_at: datetime
+
+    @classmethod
+    def from_comment(cls, c: ProjectComment) -> CommentRead:
+        return cls(
+            id=c.id,
+            author=UserRef(id=c.author.id, full_name=c.author.full_name) if c.author else None,
+            body=c.body,
+            created_at=c.created_at,
+        )
+
+
 class ProjectDetail(ProjectListItem):
     goal: str | None
     notes: str | None
     created_by: UserRef | None
     members: list[MemberRead]
+    comments: list[CommentRead]
     current_year: int
     goals: list[MonthlyGoalRead]
     budgets: list[MonthlyBudgetRead]
@@ -169,6 +214,7 @@ class ProjectDetail(ProjectListItem):
                 UserRef(id=creator.id, full_name=creator.full_name) if creator else None
             ),
             members=[MemberRead.from_member(m) for m in p.members],
+            comments=[CommentRead.from_comment(c) for c in p.comments],
             current_year=current_year,
             goals=goals,
             budgets=budgets,

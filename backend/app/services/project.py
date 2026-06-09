@@ -14,7 +14,7 @@ from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_manager
 from app.core.scope import accessible_user_ids
 from app.models.lookups import Country, Niche
-from app.models.project import Project, ProjectMember
+from app.models.project import Project, ProjectComment, ProjectMember
 from app.models.user import User
 from app.repositories.project import ProjectRepository
 from app.repositories.user import UserRepository
@@ -241,6 +241,40 @@ class ProjectService:
         self.db.commit()
         self.db.refresh(p)
         return p
+
+    # --- comments ---
+    def add_comment(self, project_id: uuid.UUID, body: str) -> ProjectComment:
+        p = self.get(project_id)  # visibility/scope check
+        comment = ProjectComment(project_id=p.id, author_id=self.user.id, body=body)
+        self.db.add(comment)
+        notifier = Notifier(self.db)
+        # Notify the project's people (assignee/lead) + admins, except the author.
+        for uid in {p.assignee_id, p.team_lead_id}:
+            if uid and uid != self.user.id:
+                notifier.notify(
+                    company_id=self.company_id,
+                    user_id=uid,
+                    type="project_comment",
+                    title="New comment",
+                    body=f"{self.user.full_name} commented on '{p.name}'.",
+                    entity_type="project",
+                    entity_id=p.id,
+                )
+        notifier.notify_admins(
+            company_id=self.company_id,
+            type="project_comment",
+            title="New comment",
+            body=f"{self.user.full_name} commented on '{p.name}'.",
+            entity_type="project",
+            entity_id=p.id,
+            exclude=self.user.id,
+        )
+        self.db.commit()
+        self.db.refresh(comment)
+        return comment
+
+    def list_comments(self, project_id: uuid.UUID) -> list[ProjectComment]:
+        return list(self.get(project_id).comments)
 
     # --- members ---
     def list_members(self, project_id: uuid.UUID) -> list[ProjectMember]:

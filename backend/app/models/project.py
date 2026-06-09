@@ -50,6 +50,7 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     monthly_budget: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    budget_currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
     target_links: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     goal: Mapped[str | None] = mapped_column(Text)
     due_date: Mapped[date | None] = mapped_column(Date)
@@ -75,6 +76,11 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     members: Mapped[list[ProjectMember]] = relationship(
         back_populates="project", cascade="all, delete-orphan", lazy="selectin"
+    )
+    comments: Mapped[list[ProjectComment]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        order_by="ProjectComment.created_at.desc()",
     )
     monthly_goals: Mapped[list[ProjectMonthlyGoal]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
@@ -136,3 +142,21 @@ class ProjectMonthlyBudget(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     spent_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
 
     project: Mapped[Project] = relationship(back_populates="monthly_budgets")
+
+
+class ProjectComment(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "project_comments"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    project: Mapped[Project] = relationship(back_populates="comments")
+    author: Mapped[User | None] = relationship(foreign_keys=[author_id], lazy="joined")

@@ -16,6 +16,8 @@ from app.schemas.project import (
     ArchiveRequest,
     BulkAssignRequest,
     BulkAssignResult,
+    CommentCreate,
+    CommentRead,
     MemberCreate,
     MemberRead,
     ProjectCreate,
@@ -143,6 +145,21 @@ def archive_project(
 ) -> ProjectListItem:
     project = ProjectService(db, user).set_archived(project_id, body.archived)
     return ProjectListItem.from_project(project)
+
+
+# --- comments ---
+@router.get("/{project_id}/comments", response_model=list[CommentRead])
+def list_comments(project_id: uuid.UUID, user: CurrentUser, db: DbSession) -> list[CommentRead]:
+    return [CommentRead.from_comment(c) for c in ProjectService(db, user).list_comments(project_id)]
+
+
+@router.post(
+    "/{project_id}/comments", response_model=CommentRead, status_code=status.HTTP_201_CREATED
+)
+def add_comment(
+    project_id: uuid.UUID, body: CommentCreate, user: CurrentUser, db: DbSession
+) -> CommentRead:
+    return CommentRead.from_comment(ProjectService(db, user).add_comment(project_id, body.body))
 
 
 # --- members ---

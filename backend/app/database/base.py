@@ -26,6 +26,7 @@ from app.models.lookups import Country, Language, Niche  # noqa: F401
 # Module 3 — Projects + Module 4 — Goals/Budgets
 from app.models.project import (  # noqa: F401
     Project,
+    ProjectComment,
     ProjectMember,
     ProjectMonthlyBudget,
     ProjectMonthlyGoal,
