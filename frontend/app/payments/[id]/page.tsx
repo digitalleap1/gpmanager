@@ -1,22 +1,43 @@
 "use client";
 
-import { ExternalLink, Pencil } from "lucide-react";
+import {
+  Check,
+  ExternalLink,
+  MessageSquarePlus,
+  Pencil,
+  Send,
+  X,
+} from "lucide-react";
 import Link from "next/link";
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import {
   PaymentStatusBadge,
   paymentStatusLabel,
 } from "@/components/payment-status-badge";
+import { useAuth } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api";
 import type {
+  PaymentComment,
   PaymentDetail,
   PaymentStatus,
   PaymentStatusHistoryEntry,
 } from "@/lib/types";
 import { formatCurrency, formatDate, relativeTime } from "@/lib/utils";
-import { getPayment, setStatus } from "@/services/payment-service";
+import {
+  addPaymentComment,
+  getPayment,
+  setStatus,
+} from "@/services/payment-service";
+
+/** Build up-to-two-letter initials from a display name. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 const STATUS_OPTIONS: PaymentStatus[] = [
   "pending",
@@ -52,10 +73,27 @@ export default function PaymentDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { user } = useAuth();
+
+  const isManager =
+    !!user &&
+    (user.is_superuser ||
+      user.roles.includes("admin") ||
+      user.roles.includes("team_lead"));
 
   const [payment, setPayment] = useState<PaymentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Lets "Request clarification" jump focus straight to the comment box.
+  const commentBoxRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const focusCommentBox = useCallback(() => {
+    const el = commentBoxRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.focus();
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +148,16 @@ export default function PaymentDetailPage({
               Edit
             </Link>
           </div>
+
+          {/* Manager request-workflow actions */}
+          {isManager && (
+            <ManagerActions
+              paymentId={id}
+              currentStatus={payment.status}
+              reload={load}
+              onRequestClarification={focusCommentBox}
+            />
+          )}
 
           {/* Overview */}
           <section className="rounded-lg border border-border bg-card p-6 text-card-foreground">
@@ -257,6 +305,14 @@ export default function PaymentDetailPage({
             )}
           </section>
 
+          {/* Request & clarification thread */}
+          <RequestThread
+            paymentId={id}
+            comments={payment.comments}
+            reload={load}
+            textareaRef={commentBoxRef}
+          />
+
           {/* Workflow control */}
           <StatusWorkflow
             paymentId={id}
@@ -287,6 +343,231 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
       </dt>
       <dd className="mt-1 text-sm">{isEmpty ? "—" : value}</dd>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Prominent request-workflow controls for managers: one-click Approve (→ paid)
+ * and Reject (→ rejected), plus a "Request clarification" affordance that jumps
+ * focus to the comment box so the manager can ask the requester for details
+ * (which notifies them on the backend).
+ */
+function ManagerActions({
+  paymentId,
+  currentStatus,
+  reload,
+  onRequestClarification,
+}: {
+  paymentId: string;
+  currentStatus: string;
+  reload: () => Promise<void>;
+  onRequestClarification: () => void;
+}) {
+  // Which action is in flight, so only the clicked button shows "…".
+  const [busy, setBusy] = useState<"paid" | "rejected" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const alreadyPaid = currentStatus === "paid";
+  const alreadyRejected = currentStatus === "rejected";
+
+  async function apply(status: "paid" | "rejected") {
+    setErr(null);
+    setBusy(status);
+    try {
+      await setStatus(paymentId, status, null);
+      await reload();
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 403
+          ? "Only managers can change a payment's status."
+          : e instanceof ApiError
+            ? e.message
+            : "Unable to update the status.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+      <h2 className="text-sm font-semibold text-[#1A1F4D]">Review request</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Approve to mark this payment <span className="font-medium">Paid</span>{" "}
+        (adds the amount to the project budget), reject it, or ask the requester
+        for more detail.
+      </p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => apply("paid")}
+          disabled={busy !== null || alreadyPaid}
+          className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+        >
+          <Check className="h-4 w-4" />
+          {busy === "paid"
+            ? "Approving…"
+            : alreadyPaid
+              ? "Approved"
+              : "Approve"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => apply("rejected")}
+          disabled={busy !== null || alreadyRejected}
+          className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+        >
+          <X className="h-4 w-4" />
+          {busy === "rejected"
+            ? "Rejecting…"
+            : alreadyRejected
+              ? "Rejected"
+              : "Reject"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onRequestClarification}
+          disabled={busy !== null}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+        >
+          <MessageSquarePlus className="h-4 w-4" />
+          Request clarification
+        </button>
+      </div>
+
+      {err && (
+        <p
+          role="alert"
+          className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {err}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Request & clarification thread: a quick-add box plus the comment list. Posting
+ * a comment notifies the other party server-side (a requester's note reaches
+ * the admins; an admin's comment reaches the requester). Newest comment sits at
+ * the bottom so the thread reads top-to-bottom like a conversation.
+ */
+function RequestThread({
+  paymentId,
+  comments,
+  reload,
+  textareaRef,
+}: {
+  paymentId: string;
+  comments: PaymentComment[];
+  reload: () => Promise<void>;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+}) {
+  const [body, setBody] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleAdd() {
+    const trimmed = body.trim();
+    if (trimmed === "") return;
+    setErr(null);
+    setPosting(true);
+    try {
+      await addPaymentComment(paymentId, trimmed);
+      setBody("");
+      // Refresh the detail so the thread + any notifications stay in sync.
+      await reload();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Unable to add comment.");
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  const ordered = [...comments].sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+      <h2 className="text-sm font-semibold text-[#1A1F4D]">
+        Request &amp; clarification
+      </h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Ask questions or add context. Each comment notifies the other party.
+      </p>
+
+      {/* Thread list */}
+      {ordered.length === 0 ? (
+        <p className="mt-5 text-sm text-muted-foreground">No comments yet.</p>
+      ) : (
+        <ul className="mt-5 space-y-4">
+          {ordered.map((c) => {
+            const name = c.author?.full_name ?? "Unknown";
+            return (
+              <li key={c.id} className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                  {initials(name)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-sm font-medium">{name}</p>
+                    <span className="text-xs text-muted-foreground">
+                      {relativeTime(c.created_at)}
+                    </span>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+                    {c.body}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Quick-add */}
+      <div className="mt-5 space-y-2">
+        <textarea
+          ref={textareaRef}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={3}
+          placeholder="Add a comment or ask for clarification…"
+          disabled={posting}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={posting || body.trim() === ""}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            <Send className="h-4 w-4" />
+            {posting ? "Posting…" : "Add comment"}
+          </button>
+        </div>
+      </div>
+
+      {err && (
+        <p
+          role="alert"
+          className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {err}
+        </p>
+      )}
+    </section>
   );
 }
 

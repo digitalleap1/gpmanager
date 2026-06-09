@@ -12,6 +12,7 @@ import type {
   BulkImportResult,
   LedgerStats,
   Page,
+  PaymentComment,
   PaymentCreate,
   PaymentDetail,
   PaymentListItem,
@@ -96,6 +97,25 @@ export function setStatus(
 
 export function removePayment(id: string): Promise<void> {
   return api.delete<void>(`/payments/${id}`);
+}
+
+/* --- Request & clarification thread --- */
+
+/** List a payment's request-thread comments. */
+export function listPaymentComments(id: string): Promise<PaymentComment[]> {
+  return api.get<PaymentComment[]>(`/payments/${id}/comments`);
+}
+
+/**
+ * Post a comment on a payment's request thread. Notifies the other party:
+ * a requester's note reaches the admins; an admin's comment reaches the
+ * requester.
+ */
+export function addPaymentComment(
+  id: string,
+  body: string,
+): Promise<PaymentComment> {
+  return api.post<PaymentComment>(`/payments/${id}/comments`, { body });
 }
 
 /* --- Bulk import / export --- */

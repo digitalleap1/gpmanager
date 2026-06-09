@@ -671,8 +671,17 @@ export interface PaymentStatusHistoryEntry {
   created_at: string;
 }
 
+/** A single comment in a payment's request-clarification thread. */
+export interface PaymentComment {
+  id: string;
+  author: UserRef | null;
+  body: string;
+  created_at: string;
+}
+
 export interface PaymentDetail extends PaymentListItem {
   status_history: PaymentStatusHistoryEntry[];
+  comments: PaymentComment[];
 }
 
 /** Body for `POST /payments`. Dates are `YYYY-MM-DD`. */
