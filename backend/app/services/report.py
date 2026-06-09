@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import PermissionDenied
 from app.core.permissions import is_manager
+from app.core.scope import accessible_project_ids, accessible_user_ids
 from app.models.guest_post import GuestPost
 from app.models.payment import Payment
 from app.models.project import Project
@@ -35,6 +36,9 @@ class ReportService:
         self.db = db
         self.user = user
         self.company_id = user.company_id
+        # RBAC scope (None == admin/unrestricted).
+        self._pids = accessible_project_ids(db, user)
+        self._uids = accessible_user_ids(db, user)
 
     # ----- Project report -----
     def project_report(
@@ -48,7 +52,11 @@ class ReportService:
         **_,
     ) -> ReportResult:
         cid = self.company_id
-        stmt = select(Project).where(Project.company_id == cid)
+        stmt = select(Project).where(
+            Project.company_id == cid, Project.deleted_at.is_(None)
+        )
+        if self._pids is not None:
+            stmt = stmt.where(Project.id.in_(self._pids))
         if project_id:
             stmt = stmt.where(Project.id == project_id)
         if team_lead_id:
@@ -71,7 +79,11 @@ class ReportService:
         spent = dict(
             self.db.execute(
                 select(Payment.project_id, func.coalesce(func.sum(Payment.amount_usd), 0))
-                .where(Payment.company_id == cid, Payment.status == "paid")
+                .where(
+                    Payment.company_id == cid,
+                    Payment.deleted_at.is_(None),
+                    Payment.status == "paid",
+                )
                 .group_by(Payment.project_id)
             ).all()
         )
@@ -124,11 +136,10 @@ class ReportService:
     # ----- Team report -----
     def team_report(self, **_) -> ReportResult:
         cid = self.company_id
-        users = self.db.scalars(
-            select(User).where(User.company_id == cid, User.status == "active").order_by(
-                User.full_name
-            )
-        ).all()
+        users_stmt = select(User).where(User.company_id == cid, User.status == "active")
+        if self._uids is not None:
+            users_stmt = users_stmt.where(User.id.in_(self._uids))
+        users = self.db.scalars(users_stmt.order_by(User.full_name)).all()
         rows: list[dict] = []
         for u in users:
             projects = (
@@ -210,7 +221,16 @@ class ReportService:
         **_,
     ) -> ReportResult:
         cid = self.company_id
-        stmt = select(Payment).where(Payment.company_id == cid)
+        stmt = select(Payment).where(
+            Payment.company_id == cid, Payment.deleted_at.is_(None)
+        )
+        if self._uids is not None:
+            stmt = stmt.where(
+                or_(
+                    Payment.created_by.in_(self._uids),
+                    Payment.attributed_to_id.in_(self._uids),
+                )
+            )
         if project_id:
             stmt = stmt.where(Payment.project_id == project_id)
         if status:
@@ -262,6 +282,13 @@ class ReportService:
     ) -> ReportResult:
         cid = self.company_id
         stmt = select(GuestPost).where(GuestPost.company_id == cid)
+        if self._uids is not None:
+            stmt = stmt.where(
+                or_(
+                    GuestPost.assigned_user_id.in_(self._uids),
+                    GuestPost.created_by.in_(self._uids),
+                )
+            )
         if project_id:
             stmt = stmt.where(GuestPost.project_id == project_id)
         if status:
