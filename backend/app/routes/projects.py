@@ -25,10 +25,14 @@ from app.schemas.project import (
     ProjectCreate,
     ProjectDetail,
     ProjectListItem,
+    ProjectOverview,
     ProjectUpdate,
+    WebsiteUsedItem,
 )
+from app.schemas.audit import AuditLogRead
 from app.services.goal import GoalService
 from app.services.project import ProjectService
+from app.services.project_hub import ProjectHubService
 
 router = APIRouter()
 
@@ -155,6 +159,27 @@ def archive_project(
 ) -> ProjectListItem:
     project = ProjectService(db, user).set_archived(project_id, body.archived)
     return ProjectListItem.from_project(project)
+
+
+# --- project hub (overview / websites / activity) ---
+@router.get("/{project_id}/overview", response_model=ProjectOverview)
+def project_overview(project_id: uuid.UUID, user: CurrentUser, db: DbSession) -> ProjectOverview:
+    return ProjectOverview(**ProjectHubService(db, user).overview(project_id))
+
+
+@router.get("/{project_id}/websites", response_model=list[WebsiteUsedItem])
+def project_websites(
+    project_id: uuid.UUID, user: CurrentUser, db: DbSession
+) -> list[WebsiteUsedItem]:
+    return [WebsiteUsedItem(**w) for w in ProjectHubService(db, user).websites_used(project_id)]
+
+
+@router.get("/{project_id}/activity", response_model=list[AuditLogRead])
+def project_activity(
+    project_id: uuid.UUID, user: CurrentUser, db: DbSession, limit: int = 40
+) -> list[AuditLogRead]:
+    logs = ProjectHubService(db, user).activity(project_id, limit)
+    return [AuditLogRead.from_log(log) for log in logs]
 
 
 # --- comments ---

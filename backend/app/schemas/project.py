@@ -108,6 +108,35 @@ class BulkDeleteResult(BaseModel):
     skipped: int
 
 
+class ProjectOverview(BaseModel):
+    budget_assigned: float
+    budget_consumed: float
+    budget_pending: float
+    budget_remaining: float
+    budget_currency: str
+    cost_per_link: float | None
+    cost_per_website: float | None
+    target_links: int
+    total_links: int
+    published_links: int
+    pending_links: int
+    rejected_links: int
+    websites_used: int
+    payments_count: int
+    payments_paid: float
+    payments_pending: float
+    team_size: int
+    tasks_total: int
+    tasks_completed: int
+
+
+class WebsiteUsedItem(BaseModel):
+    website: str
+    links: int
+    spend: float
+    published: int
+
+
 class MemberCreate(BaseModel):
     user_id: uuid.UUID
     role_label: str | None = Field(default=None, max_length=60)
