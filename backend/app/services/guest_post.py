@@ -7,13 +7,14 @@ from __future__ import annotations  # lazy annotations: the `list` method must n
 import uuid
 from datetime import date, datetime, timezone
 
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFound, PermissionDenied
 from app.core.permissions import is_manager
 from app.core.scope import accessible_user_ids
 from app.models.guest_post import GuestPost, GuestPostStatusHistory
-from app.models.project import ProjectMonthlyGoal
+from app.models.project import Project, ProjectMonthlyGoal
 from app.models.user import User
 from app.repositories.guest_post import GuestPostRepository
 from app.repositories.project import GoalRepository, ProjectRepository
@@ -148,6 +149,111 @@ class GuestPostService:
         self.db.commit()
         self.db.refresh(gp)
         return gp
+
+    # --- review workflow (member submits -> lead/admin approves/rejects) ---
+    def submit_for_review(self, gp_id: uuid.UUID) -> GuestPost:
+        gp = self.get(gp_id)
+        if not self._can_edit(gp):
+            raise PermissionDenied()
+        gp.review_status = "submitted"
+        notifier = Notifier(self.db)
+        lead_id = gp.project.team_lead_id if gp.project else None
+        body = f"{self.user.full_name} submitted '{gp.website_name or 'a website'}' for review."
+        if lead_id and lead_id != self.user.id:
+            notifier.notify(
+                company_id=self.company_id, user_id=lead_id, type="review_requested",
+                title="Review requested", body=body, entity_type="guest_post", entity_id=gp.id,
+            )
+        notifier.notify_admins(
+            company_id=self.company_id, type="review_requested", title="Review requested",
+            body=body, entity_type="guest_post", entity_id=gp.id, exclude=self.user.id,
+        )
+        self.activity.record(
+            company_id=self.company_id, user_id=self.user.id, action="guest_post.submitted",
+            module="guest_post", entity_type="guest_post", entity_id=gp.id,
+            new={"website_name": gp.website_name},
+        )
+        self.db.commit()
+        self.db.refresh(gp)
+        return gp
+
+    def review(self, gp_id: uuid.UUID, approve: bool, note: str | None) -> GuestPost:
+        if not is_manager(self.user):
+            raise PermissionDenied("Only team leads or admins can review submissions")
+        gp = self.get(gp_id)
+        gp.review_status = "approved" if approve else "rejected"
+        gp.reviewed_by = self.user.id
+        gp.reviewed_at = datetime.now(timezone.utc)
+        notifier = Notifier(self.db)
+        body = f"{self.user.full_name} {gp.review_status} '{gp.website_name or 'a website'}'."
+        if note:
+            body += f" Note: {note}"
+        if gp.created_by and gp.created_by != self.user.id:
+            notifier.notify(
+                company_id=self.company_id, user_id=gp.created_by, type="review_decision",
+                title=f"Submission {gp.review_status}", body=body,
+                entity_type="guest_post", entity_id=gp.id,
+            )
+        notifier.notify_admins(
+            company_id=self.company_id, type="review_decision",
+            title=f"Guest post {gp.review_status}", body=body,
+            entity_type="guest_post", entity_id=gp.id, exclude=self.user.id,
+        )
+        self.activity.record(
+            company_id=self.company_id, user_id=self.user.id,
+            action=f"guest_post.{gp.review_status}", module="guest_post",
+            entity_type="guest_post", entity_id=gp.id, new={"note": note} if note else None,
+        )
+        self.db.commit()
+        self.db.refresh(gp)
+        return gp
+
+    def stats(self) -> dict:
+        """Role-scoped Guest Post Links widgets."""
+        scope = self._scope()
+        base = [GuestPost.company_id == self.company_id]
+        if scope is not None:
+            base.append(
+                or_(
+                    GuestPost.assigned_user_id.in_(scope),
+                    GuestPost.created_by.in_(scope),
+                )
+            )
+
+        def count(*extra) -> int:
+            return int(self.db.scalar(select(func.count()).select_from(GuestPost).where(*base, *extra)) or 0)
+
+        now = datetime.now(timezone.utc)
+        total = count()
+        published = count(GuestPost.status == "published")
+        by_user_rows = self.db.execute(
+            select(User.full_name, func.count())
+            .join(GuestPost, GuestPost.created_by == User.id)
+            .where(*base)
+            .group_by(User.full_name)
+            .order_by(func.count().desc())
+            .limit(10)
+        ).all()
+        by_project_rows = self.db.execute(
+            select(Project.name, func.count())
+            .join(GuestPost, GuestPost.project_id == Project.id)
+            .where(*base)
+            .group_by(Project.name)
+            .order_by(func.count().desc())
+            .limit(10)
+        ).all()
+        this_month = count(
+            func.extract("year", GuestPost.created_at) == now.year,
+            func.extract("month", GuestPost.created_at) == now.month,
+        )
+        return {
+            "total": total,
+            "published": published,
+            "pending": total - published,
+            "this_month": this_month,
+            "by_user": [{"name": n, "count": int(c)} for n, c in by_user_rows],
+            "by_project": [{"name": n, "count": int(c)} for n, c in by_project_rows],
+        }
 
     def delete(self, gp_id: uuid.UUID) -> None:
         if not is_manager(self.user):

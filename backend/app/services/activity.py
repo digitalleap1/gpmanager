@@ -13,8 +13,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import PermissionDenied
-from app.core.permissions import is_admin
+from app.core.scope import accessible_user_ids
 from app.models.activity import ActivityLog
 from app.models.user import User
 
@@ -79,9 +78,12 @@ class ActivityLogService:
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[Sequence[ActivityLog], int]:
-        if not is_admin(self.user):
-            raise PermissionDenied("Audit logs are available to administrators")
         stmt = select(ActivityLog).where(ActivityLog.company_id == self.company_id)
+        # Role scope: admins see everything; team leads see their own + their
+        # team members' activity; members see only their own (by actor).
+        scope = accessible_user_ids(self.db, self.user)
+        if scope is not None:
+            stmt = stmt.where(ActivityLog.user_id.in_(scope))
         if module:
             stmt = stmt.where(ActivityLog.module == module)
         if action:

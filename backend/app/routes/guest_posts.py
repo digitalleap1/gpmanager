@@ -13,8 +13,10 @@ from app.schemas.guest_post import (
     GuestPostCreate,
     GuestPostDetail,
     GuestPostListItem,
+    GuestPostStatsRead,
     GuestPostUpdate,
     PublishRequest,
+    ReviewDecision,
     StatusChange,
 )
 from app.services.guest_post import GuestPostService
@@ -62,9 +64,29 @@ def create_guest_post(
     return GuestPostListItem.from_gp(GuestPostService(db, user).create(body))
 
 
+# Static path before /{gp_id}.
+@router.get("/stats", response_model=GuestPostStatsRead)
+def guest_post_stats(user: CurrentUser, db: DbSession) -> GuestPostStatsRead:
+    return GuestPostStatsRead(**GuestPostService(db, user).stats())
+
+
 @router.get("/{gp_id}", response_model=GuestPostDetail)
 def get_guest_post(gp_id: uuid.UUID, user: CurrentUser, db: DbSession) -> GuestPostDetail:
     return GuestPostDetail.from_gp_detail(GuestPostService(db, user).get(gp_id))
+
+
+@router.post("/{gp_id}/submit-review", response_model=GuestPostListItem)
+def submit_for_review(gp_id: uuid.UUID, user: CurrentUser, db: DbSession) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(GuestPostService(db, user).submit_for_review(gp_id))
+
+
+@router.post("/{gp_id}/review", response_model=GuestPostListItem)
+def review_guest_post(
+    gp_id: uuid.UUID, body: ReviewDecision, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(
+        GuestPostService(db, user).review(gp_id, body.approve, body.note)
+    )
 
 
 @router.patch("/{gp_id}", response_model=GuestPostListItem)

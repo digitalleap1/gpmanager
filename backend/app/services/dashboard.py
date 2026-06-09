@@ -154,7 +154,10 @@ class DashboardService:
         )
 
     def recent_activity(self, limit: int = 10) -> list[ActivityRead]:
-        rows = ActivityRepository(self.db).recent(self.company_id, limit)
+        # Admin sees all; team lead sees own + team members'; member sees own.
+        rows = ActivityRepository(self.db).recent(
+            self.company_id, limit, restrict_to_users=accessible_user_ids(self.db, self.user)
+        )
         return [
             ActivityRead(
                 id=r.id,

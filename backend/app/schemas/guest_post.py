@@ -121,7 +121,9 @@ class GuestPostListItem(BaseModel):
     price: float | None
     contact_email: str | None
     assigned_user: UserRef | None
+    added_by: UserRef | None
     status: str
+    review_status: str
     outreach_date: date | None
     live_link_date: date | None
     live_link: str | None
@@ -131,6 +133,7 @@ class GuestPostListItem(BaseModel):
 
     @classmethod
     def from_gp(cls, gp: GuestPost) -> GuestPostListItem:
+        creator = gp.created_by_user
         return cls(
             id=gp.id,
             project_id=gp.project_id,
@@ -147,7 +150,9 @@ class GuestPostListItem(BaseModel):
                 if gp.assigned_user
                 else None
             ),
+            added_by=UserRef(id=creator.id, full_name=creator.full_name) if creator else None,
             status=gp.status,
+            review_status=gp.review_status,
             outreach_date=gp.outreach_date,
             live_link_date=gp.live_link_date,
             live_link=gp.live_link,
@@ -169,3 +174,22 @@ class GuestPostDetail(GuestPostListItem):
             notes=gp.notes,
             status_history=[StatusHistoryRead.from_row(h) for h in gp.status_history],
         )
+
+
+class ReviewDecision(BaseModel):
+    approve: bool
+    note: str | None = Field(default=None, max_length=255)
+
+
+class NamedCount(BaseModel):
+    name: str
+    count: int
+
+
+class GuestPostStatsRead(BaseModel):
+    total: int
+    published: int
+    pending: int
+    this_month: int
+    by_user: list[NamedCount]
+    by_project: list[NamedCount]

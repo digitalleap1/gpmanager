@@ -53,6 +53,12 @@ class GuestPost(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     anchor_text: Mapped[str | None] = mapped_column(String(255))
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Review workflow (member submits -> lead/admin approves/rejects).
+    review_status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     project: Mapped[Project] = relationship(lazy="joined")
     assigned_user: Mapped[User | None] = relationship(
