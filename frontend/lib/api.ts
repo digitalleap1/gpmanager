@@ -27,24 +27,37 @@ import {
  * "works on my PC, can't log in from another browser/device".
  */
 function resolveApiBase(): string {
-  const configured =
-    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010/api";
-  if (typeof window === "undefined") return configured;
-  try {
-    const url = new URL(configured);
-    const pageHost = window.location.hostname;
-    const apiIsLocal =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const pageIsLocal =
-      pageHost === "localhost" || pageHost === "127.0.0.1";
-    if (apiIsLocal && !pageIsLocal) {
-      url.hostname = pageHost;
-      return url.toString().replace(/\/$/, "");
-    }
-  } catch {
-    // Malformed env value — fall back to the configured string as-is.
+  const fromEnv = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const isLocalHost = (h: string) => h === "localhost" || h === "127.0.0.1";
+
+  // Server-side / build time: trust the env, else the local dev default.
+  if (typeof window === "undefined") {
+    return (fromEnv ?? "http://localhost:8010/api").replace(/\/$/, "");
   }
-  return configured;
+
+  const pageIsLocal = isLocalHost(window.location.hostname);
+
+  if (fromEnv) {
+    try {
+      const url = new URL(fromEnv, window.location.origin);
+      // Dev convenience: if the API is pinned to localhost but the page is
+      // opened over the LAN (by IP/host), reach the API on that same host.
+      if (isLocalHost(url.hostname) && !pageIsLocal) {
+        url.hostname = window.location.hostname;
+        return url.toString().replace(/\/$/, "");
+      }
+    } catch {
+      // ignore malformed env, fall through to the raw value
+    }
+    return fromEnv.replace(/\/$/, "");
+  }
+
+  // No env configured:
+  //  - local dev  -> the native backend on :8010
+  //  - production -> SAME-ORIGIN "/api" (never invent a :8010 port). Pair this
+  //    with a Vercel rewrite proxying /api/* to the backend, OR set
+  //    NEXT_PUBLIC_API_URL to the backend's https URL.
+  return pageIsLocal ? "http://localhost:8010/api" : "/api";
 }
 
 const API_URL = resolveApiBase();
