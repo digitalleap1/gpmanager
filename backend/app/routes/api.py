@@ -32,34 +32,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@api_router.get("/_diag", tags=["meta"])
-def _diag() -> dict:
-    """TEMP deploy diagnostic: is DATABASE_URL/SECRET_KEY set, and can we reach
-    the DB? (No secrets are returned — only the host and the error text.)"""
-    import os
-
-    from sqlalchemy import text
-
-    from app.core.config import settings
-    from app.database.session import engine
-
-    uri = settings.database_uri
-    host = uri.split("@")[-1].split("?")[0] if "@" in uri else "localhost (DEFAULT — env not set)"
-    out: dict = {
-        "database_url_env_set": bool(os.environ.get("DATABASE_URL")),
-        "secret_key_env_set": bool(os.environ.get("SECRET_KEY")),
-        "db_target": host,
-    }
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("select 1"))
-        out["db_connect"] = "OK"
-    except Exception as exc:  # noqa: BLE001
-        out["db_connect"] = "FAILED"
-        out["error"] = repr(exc)[:600]
-    return out
-
-
 # --- Feature module routers (mounted as each module is built) ---
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
