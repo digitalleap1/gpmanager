@@ -1,10 +1,24 @@
-# Going Live — GPOMS (Neon + Render + Vercel)
+# Going Live — GPOMS
 
-The app is split for hosting: **frontend → Vercel**, **backend (FastAPI) → Render**,
-**database (Postgres) → Neon**. FastAPI cannot run on Vercel — that was the cause of
-the earlier Vercel error. The repo already contains everything needed
-(`render.yaml`, `backend/Dockerfile`, `frontend/vercel.json`). Follow these steps
-once; afterwards every `git push` to `main` auto-redeploys both.
+The app has three parts: a **Next.js frontend**, a **FastAPI backend**, and a
+**Postgres database**. Pick one hosting option:
+
+- **Option A — Render** (backend) + Neon (db) + Vercel (frontend). Backend is
+  *always-on*, runs migrations automatically, and handles long jobs / big imports.
+  Recommended for real use.
+- **Option B — All on Vercel** (backend *and* frontend as Vercel projects) + Neon
+  (db). No Render, no extra accounts — just **Vercel + Neon + GitHub**. The backend
+  runs as Python serverless functions (see caveats at the end).
+
+Both options use the configs already in the repo. After the one-time setup, every
+`git push` to `main` auto-redeploys.
+
+---
+
+## Option A — Render + Neon + Vercel (always-on)
+
+The split: **frontend → Vercel**, **backend (FastAPI) → Render**, **db → Neon**.
+The repo already contains `render.yaml`, `backend/Dockerfile`, `frontend/vercel.json`.
 
 ---
 
@@ -65,6 +79,58 @@ once; afterwards every `git push` to `main` auto-redeploys both.
    `FIRST_ADMIN_EMAIL` / `FIRST_ADMIN_PASSWORD` you set on Render.
 
 Done — you're live. Future `git push origin main` redeploys both Render and Vercel.
+
+---
+
+## Option B — All on Vercel + Neon (no Render)
+
+Host the **backend on Vercel too** (Python serverless functions), so you only use
+**Vercel + Neon + GitHub**. The repo already has `backend/api/index.py` +
+`backend/vercel.json` for this.
+
+### B1) Database — Neon
+Same as Option A step 1 — create the project, copy the **Pooled** connection string.
+
+### B2) One-time: create the schema + admin in Neon (run locally)
+Serverless has no startup command, so run migrations once against Neon from your
+machine (PowerShell, from the repo):
+```powershell
+cd backend
+$env:DATABASE_URL = "postgresql://USER:PASS@HOST/neondb?sslmode=require"   # your Neon Pooled URL
+$env:FIRST_ADMIN_EMAIL = "you@yourco.com"
+$env:FIRST_ADMIN_PASSWORD = "a-strong-password"
+.\.venv\Scripts\alembic.exe upgrade head
+.\.venv\Scripts\python.exe -m scripts.seed
+```
+This creates every table + your admin login in Neon. (Re-run these two commands
+after any future `git push` that adds a new migration.)
+
+### B3) Backend → Vercel (project #1)
+1. Vercel → **Add New → Project** → import `digitalleap1/gpmanager` →
+   **Root Directory = `backend`**. Framework Preset: **Other**.
+2. **Environment Variables:**
+   | Key | Value |
+   |---|---|
+   | `DATABASE_URL` | your Neon string |
+   | `SECRET_KEY` | a long random string (e.g. from `openssl rand -hex 32`) |
+   | `BACKEND_CORS_ORIGINS` | your frontend URL (set after B4) |
+3. Deploy. Test `https://<backend>.vercel.app/api/health` → `{"status":"ok"}`.
+
+### B4) Frontend → Vercel (project #2)
+1. **Add New → Project** → same repo → **Root Directory = `frontend`**.
+2. Env: `NEXT_PUBLIC_API_URL` = `https://<backend>.vercel.app/api`.
+3. Deploy, then set `BACKEND_CORS_ORIGINS` on the backend project to this frontend
+   URL and redeploy the backend. Log in at `/login`.
+
+### Caveats of the all-Vercel (serverless) route
+- **Function timeout 60s** — a very large Excel import could fail; import in smaller
+  batches if so.
+- **Cold starts** add ~1–3s after the backend has been idle.
+- **No background jobs** — the overdue-task sweep must be triggered manually/externally.
+- **Migrations are manual** (re-run B2 when you add migrations).
+
+If you outgrow these, moving just the backend to a free always-on host
+(**Railway** or **Fly.io**) is a drop-in upgrade — keep Neon + Vercel as-is.
 
 ---
 
