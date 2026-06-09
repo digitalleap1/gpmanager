@@ -1,31 +1,33 @@
-"""Vercel Python serverless entrypoint (with deploy self-diagnostics).
+"""TEMP Vercel diagnostic — a plain Python handler (no FastAPI/ASGI).
 
-Vercel's Python runtime auto-detects this file (it lives in the project's `api/`
-directory) and serves the module-level ``app`` — the FastAPI ASGI application.
-The catch-all rewrite in ``vercel.json`` routes every request here.
+Vercel's Python runtime serves a ``handler`` subclass of BaseHTTPRequestHandler
+as a basic serverless function — this bypasses ASGI entirely, so it runs even if
+Vercel can't serve the FastAPI app. It reports the Python version and whether
+``from app.main import app`` succeeds (with the traceback if not), so we can see
+the real cause at /api/health instead of an opaque 500.
 
-If importing the real app fails on Vercel (a different runtime than local), we
-fall back to a tiny app that RETURNS the traceback as JSON, so the cause is
-visible at any URL instead of an opaque FUNCTION_INVOCATION_FAILED 500.
+Reverted to the real ASGI entry once the cause is fixed.
 """
 
+import json
 import sys
 import traceback
+from http.server import BaseHTTPRequestHandler
 
-try:
-    from app.main import app  # noqa: F401  (ASGI app served by Vercel)
-except Exception as exc:  # pragma: no cover - production import diagnostics
-    _tb = traceback.format_exc()
-    from fastapi import FastAPI
 
-    app = FastAPI()
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        result: dict = {"stage": "diagnostic", "python": sys.version}
+        try:
+            from app.main import app  # noqa: F401
 
-    @app.get("/{full_path:path}")
-    def _import_error(full_path: str) -> dict:
-        return {
-            "ok": False,
-            "stage": "import",
-            "python": sys.version,
-            "exception": repr(exc),
-            "traceback": _tb.splitlines()[-30:],
-        }
+            result["import_app"] = "OK"
+            result["route_count"] = len(getattr(app, "routes", []))
+        except Exception as exc:  # noqa: BLE001
+            result["import_app"] = "FAILED"
+            result["error"] = repr(exc)
+            result["traceback"] = traceback.format_exc().splitlines()[-30:]
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(result).encode())
