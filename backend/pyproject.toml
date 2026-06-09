@@ -5,13 +5,16 @@ description = "Digital Leap Guest Post Operations Management System — backend 
 requires-python = ">=3.12"
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py312"
 extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "SIM"]
-ignore = ["B008"]   # FastAPI uses function calls (Depends()) in argument defaults
+ignore = [
+    "B008",   # FastAPI uses function calls (Depends()) in argument defaults
+    "N818",   # custom exceptions use intentional short names (NotFound, BadRequest, ...)
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

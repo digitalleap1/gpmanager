@@ -5,7 +5,7 @@ activate / suspend / deactivate, delete. Managers may read; only admins may muta
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -95,7 +95,7 @@ class UserAdminService:
         return role
 
     def _revoke_sessions(self, user: User) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for token in user.refresh_tokens:
             if token.revoked_at is None:
                 token.revoked_at = now

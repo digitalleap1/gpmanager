@@ -1,7 +1,7 @@
 """Project routes (Module 3) including monthly goals & budgets (Module 4)."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Path, Query, Response, UploadFile, status
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.routes.deps import CurrentUser
+from app.schemas.audit import AuditLogRead
 from app.schemas.common import Page
 from app.schemas.common_bulk import ImportResult
 from app.schemas.goal import BudgetSet, GoalSet, MonthlyBudgetRead, MonthlyGoalRead
@@ -29,7 +30,6 @@ from app.schemas.project import (
     ProjectUpdate,
     WebsiteUsedItem,
 )
-from app.schemas.audit import AuditLogRead
 from app.services.goal import GoalService
 from app.services.project import ProjectService
 from app.services.project_hub import ProjectHubService
@@ -40,7 +40,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 def _this_year() -> int:
-    return datetime.now(timezone.utc).year
+    return datetime.now(UTC).year
 
 
 @router.get("", response_model=Page[ProjectListItem])

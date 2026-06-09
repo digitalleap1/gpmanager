@@ -5,7 +5,7 @@ adds a paid amount to the project's monthly `spent_amount` (Module 4 link).
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -30,10 +30,10 @@ from app.services.bulk import (
     parse_date,
     parse_number,
     parse_table,
+    run_row_imports,
+    write_table,
 )
-from app.services.bulk import run_row_imports
 from app.services.bulk import template as build_template
-from app.services.bulk import write_table
 from app.services.notification import Notifier
 
 # Import/export template columns (also the round-trip export shape).
@@ -191,7 +191,7 @@ class PaymentService:
         if not is_manager(self.user):
             raise PermissionDenied("Only managers can delete payments")
         p = self.get(payment_id)
-        p.deleted_at = datetime.now(timezone.utc)  # soft-delete -> Trash
+        p.deleted_at = datetime.now(UTC)  # soft-delete -> Trash
         p.deleted_by = self.user.id
         self.activity.record(
             company_id=self.company_id,
@@ -259,7 +259,7 @@ class PaymentService:
         """Automation: add the paid amount to the project's monthly spent budget."""
         amount = p.amount_usd
         if p.project_id is not None and amount is not None:
-            when = p.payment_date or datetime.now(timezone.utc).date()
+            when = p.payment_date or datetime.now(UTC).date()
             budget = self.budgets.get_month(p.project_id, when.year, when.month)
             if budget is None:
                 budget = ProjectMonthlyBudget(

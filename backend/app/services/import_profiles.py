@@ -18,7 +18,6 @@ from typing import Any
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
-from app.core.currencies import CURRENCY_CODES
 from app.core.exceptions import BadRequest
 from app.models.client import Client
 from app.models.lookups import Country, Niche
@@ -51,7 +50,7 @@ def _coerce_date(value: Any) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return _excel_serial_to_date(value)
     return parse_date(str(value))  # may raise ValueError
 
@@ -201,7 +200,7 @@ class ProjectProfileBase:
     def _number(value: Any) -> float | None:
         if value is None or value == "":
             return None
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return float(value)
         return parse_number(str(value))
 
@@ -379,7 +378,7 @@ def _safe_date(value: Any) -> date | None:
 def _jsonable(raw: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, value in raw.items():
-        if isinstance(value, (datetime, date)):
+        if isinstance(value, datetime | date):
             out[key] = value.isoformat()
         else:
             out[key] = value

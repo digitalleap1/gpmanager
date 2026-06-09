@@ -164,9 +164,8 @@ class TeamService:
         user = self._resolve_users([user_id])[0]
         # Remove from every other team in the company.
         for team in self.teams.list_for_company(self.company_id):
-            if team.id != target.id:
-                if any(m.id == user.id for m in team.members):
-                    team.members = [m for m in team.members if m.id != user.id]
+            if team.id != target.id and any(m.id == user.id for m in team.members):
+                team.members = [m for m in team.members if m.id != user.id]
         if not any(m.id == user.id for m in target.members):
             target.members.append(user)
         self._log("team.member_moved", target, user_id=str(user_id))

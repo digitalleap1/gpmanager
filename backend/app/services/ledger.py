@@ -8,7 +8,7 @@ payment whose payment_date is already in the past. Managers only.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -37,7 +37,7 @@ class LedgerService:
         if not is_manager(self.user):
             raise PermissionDenied()
         company = self.company_id
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
 
         # Common filters: company, not-trashed, and RBAC scope (non-admins only
         # see payments they created or are attributed to).

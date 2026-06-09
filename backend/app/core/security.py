@@ -4,7 +4,7 @@ These helpers are consumed by the auth service (Module 1). They are placed in th
 core layer so any module can verify tokens without importing feature code.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
@@ -43,7 +43,7 @@ def _create_token(
     token_type: str,
     extra_claims: dict[str, Any] | None = None,
 ) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire = now + expires_delta
     payload: dict[str, Any] = {
         "sub": str(subject),

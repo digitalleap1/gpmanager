@@ -4,7 +4,6 @@ import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import Select, func, or_, select
-from sqlalchemy.orm import Session
 
 from app.models.project import (
     Project,

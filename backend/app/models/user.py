@@ -7,7 +7,7 @@ resolve without circular imports.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -124,9 +124,8 @@ class RefreshToken(UUIDPrimaryKeyMixin, Base):
 
     @property
     def is_active(self) -> bool:
-        from datetime import timezone
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return self.revoked_at is None and self.expires_at > now
 
 

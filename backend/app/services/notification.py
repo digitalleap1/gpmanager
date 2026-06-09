@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -129,7 +129,7 @@ class NotificationService:
             raise NotFound("Notification not found")
         if not n.is_read:
             n.is_read = True
-            n.read_at = datetime.now(timezone.utc)
+            n.read_at = datetime.now(UTC)
             self.db.commit()
             self.db.refresh(n)
         return n
@@ -138,7 +138,7 @@ class NotificationService:
         result = self.db.execute(
             update(Notification)
             .where(Notification.user_id == self.user.id, Notification.is_read.is_(False))
-            .values(is_read=True, read_at=datetime.now(timezone.utc))
+            .values(is_read=True, read_at=datetime.now(UTC))
         )
         self.db.commit()
         return int(result.rowcount or 0)

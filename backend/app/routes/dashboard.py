@@ -1,6 +1,6 @@
 """Dashboard routes (Module 2)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -22,7 +22,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 def _this_year() -> int:
-    return datetime.now(timezone.utc).year
+    return datetime.now(UTC).year
 
 
 @router.get("/summary", response_model=DashboardSummary)

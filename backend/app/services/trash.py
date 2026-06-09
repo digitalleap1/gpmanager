@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
@@ -142,7 +142,7 @@ class TrashService:
             module=entity_type,
             entity_type=entity_type,
             entity_id=entity_id,
-            old={"purged_at": datetime.now(timezone.utc).isoformat()},
+            old={"purged_at": datetime.now(UTC).isoformat()},
         )
         self.db.delete(row)
         self.db.commit()

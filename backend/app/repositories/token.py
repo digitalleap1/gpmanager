@@ -1,6 +1,6 @@
 """Refresh-token and password-reset-token persistence queries."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -17,7 +17,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
         ).first()
 
     def revoke(self, token: RefreshToken) -> None:
-        token.revoked_at = datetime.now(timezone.utc)
+        token.revoked_at = datetime.now(UTC)
         self.db.flush()
 
 

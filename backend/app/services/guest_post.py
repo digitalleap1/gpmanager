@@ -5,7 +5,7 @@ bumps the project's monthly goal `achieved` count (Module 4 link).
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -150,7 +150,7 @@ class GuestPostService:
         if live_link_date is not None:
             gp.live_link_date = live_link_date
         elif gp.live_link_date is None:
-            gp.live_link_date = datetime.now(timezone.utc).date()
+            gp.live_link_date = datetime.now(UTC).date()
         if anchor_text is not None:
             gp.anchor_text = anchor_text
         if gp.status != "published":
@@ -192,7 +192,7 @@ class GuestPostService:
         gp = self.get(gp_id)
         gp.review_status = "approved" if approve else "rejected"
         gp.reviewed_by = self.user.id
-        gp.reviewed_at = datetime.now(timezone.utc)
+        gp.reviewed_at = datetime.now(UTC)
         notifier = Notifier(self.db)
         body = f"{self.user.full_name} {gp.review_status} '{gp.website_name or 'a website'}'."
         if note:
@@ -232,7 +232,7 @@ class GuestPostService:
         def count(*extra) -> int:
             return int(self.db.scalar(select(func.count()).select_from(GuestPost).where(*base, *extra)) or 0)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         total = count()
         published = count(GuestPost.status == "published")
         by_user_rows = self.db.execute(
@@ -277,7 +277,7 @@ class GuestPostService:
             entity_id=gp.id,
             old={"website_name": gp.website_name},
         )
-        gp.deleted_at = datetime.now(timezone.utc)  # soft-delete -> Trash
+        gp.deleted_at = datetime.now(UTC)  # soft-delete -> Trash
         gp.deleted_by = self.user.id
         self.db.commit()
 
@@ -319,7 +319,7 @@ class GuestPostService:
 
     def _on_published(self, gp: GuestPost) -> None:
         """Automation: increment the project's monthly goal achieved count."""
-        when = gp.live_link_date or datetime.now(timezone.utc).date()
+        when = gp.live_link_date or datetime.now(UTC).date()
         goal = self.goals.get_month(gp.project_id, when.year, when.month)
         if goal is None:
             goal = ProjectMonthlyGoal(

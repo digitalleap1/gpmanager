@@ -3,7 +3,7 @@
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,9 +19,8 @@ from app.schemas.common_bulk import ImportError as ImportErrorRow
 from app.schemas.common_bulk import ImportResult
 from app.schemas.website import ContactCreate, WebsiteCreate, WebsiteUpdate
 from app.services.activity import ActivityLogger, jsonable
-from app.services.bulk import normalize_format, parse_table
+from app.services.bulk import normalize_format, parse_table, write_table
 from app.services.bulk import template as build_template
-from app.services.bulk import write_table
 
 CSV_COLUMNS = [
     "domain", "name", "main_niche", "country", "language", "traffic", "da", "dr",
@@ -145,7 +144,7 @@ class WebsiteService:
             entity_id=w.id,
             old={"domain": w.domain},
         )
-        w.deleted_at = datetime.now(timezone.utc)  # soft-delete -> Trash
+        w.deleted_at = datetime.now(UTC)  # soft-delete -> Trash
         w.deleted_by = self.user.id
         self.db.commit()
 

@@ -8,7 +8,7 @@ correct. Managers read; managers create/update; admins delete.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -246,7 +246,7 @@ class ClientService:
         if not is_manager(self.user):
             raise PermissionDenied("Only managers can delete clients")
         client = self._get(client_id)
-        client.deleted_at = datetime.now(timezone.utc)  # soft-delete -> Trash
+        client.deleted_at = datetime.now(UTC)  # soft-delete -> Trash
         client.deleted_by = self.user.id
         self.activity.record(
             company_id=self.company_id, user_id=self.user.id, action="client.deleted",

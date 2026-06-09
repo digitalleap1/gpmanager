@@ -9,6 +9,7 @@ stored snapshot.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 
 from sqlalchemy import select
@@ -26,7 +27,7 @@ from app.schemas.import_engine import (
     PreviewRow,
 )
 from app.services.activity import ActivityLogger
-from app.services.import_profiles import ExtractedRow, Issue, get_profile
+from app.services.import_profiles import ExtractedRow, get_profile
 
 PREVIEW_ROW_CAP = 200
 ENTITY_MODELS = {"project": Project, "payment": Payment}
@@ -247,8 +248,6 @@ class ImportEngine:
     def _restore(entity: object, snapshot: dict) -> None:
         for key, value in snapshot.items():
             if key.endswith("_id") and isinstance(value, str):
-                try:
+                with contextlib.suppress(ValueError):
                     value = uuid.UUID(value)
-                except ValueError:
-                    pass
             setattr(entity, key, value)

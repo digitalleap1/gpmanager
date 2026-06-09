@@ -7,11 +7,10 @@ Holds no FastAPI types — it raises domain exceptions and owns the DB transacti
 import hashlib
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.exceptions import BadRequest, InvalidCredentials, InvalidToken
 from app.core.security import (
     REFRESH_TOKEN_TYPE,
@@ -34,7 +33,7 @@ def _hash(raw: str) -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class AuthService:
@@ -72,7 +71,7 @@ class AuthService:
             RefreshToken(
                 user_id=user.id,
                 token_hash=_hash(raw_refresh),
-                expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+                expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
             )
         )
         return access, raw_refresh

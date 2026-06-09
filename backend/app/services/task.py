@@ -5,7 +5,7 @@ automation: tasks past due and not completed get marked `overdue`).
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -59,9 +59,11 @@ class TaskService:
     def create(self, data: TaskCreate) -> Task:
         if not is_manager(self.user):
             raise PermissionDenied("Only managers can create tasks")
-        if data.project_id is not None:
-            if self.projects.get_for_company(data.project_id, self.company_id) is None:
-                raise NotFound("Project not found")
+        if (
+            data.project_id is not None
+            and self.projects.get_for_company(data.project_id, self.company_id) is None
+        ):
+            raise NotFound("Project not found")
         ensure_assignable(self.db, self.user, data.assigned_to)
         t = Task(company_id=self.company_id, created_by=self.user.id, **data.model_dump())
         self.tasks.add(t)
@@ -112,7 +114,7 @@ class TaskService:
         # keep completed_at in sync with the status
         if "status" in changes:
             if changes["status"] == "completed" and t.completed_at is None:
-                t.completed_at = datetime.now(timezone.utc)
+                t.completed_at = datetime.now(UTC)
             elif changes["status"] != "completed":
                 t.completed_at = None
         self.activity.record(
@@ -135,7 +137,7 @@ class TaskService:
             raise PermissionDenied()
         if t.status != "completed":
             t.status = "completed"
-            t.completed_at = datetime.now(timezone.utc)
+            t.completed_at = datetime.now(UTC)
             self.activity.record(
                 company_id=self.company_id,
                 user_id=self.user.id,
@@ -187,7 +189,7 @@ class TaskService:
         Intended to be triggered by a daily scheduled job."""
         if not is_manager(self.user):
             raise PermissionDenied("Only managers can run the overdue sweep")
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         candidates = self.tasks.overdue_candidates(self.company_id, today)
         notifier = Notifier(self.db)
         for t in candidates:

@@ -5,7 +5,7 @@ now and get wired up when Modules 5 and 7 land.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -58,7 +58,7 @@ class DashboardService:
         return self.db.scalar(stmt) or 0
 
     def summary(self) -> DashboardSummary:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cid = self.company_id
         pids, uids = self._scope()
 

@@ -5,7 +5,7 @@ company; regular users only see projects they're assignee, team lead, or member 
 from __future__ import annotations  # lazy annotations: the `list` method must not shadow list[...]
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -30,10 +30,10 @@ from app.services.bulk import (
     parse_date,
     parse_number,
     parse_table,
+    run_row_imports,
+    write_table,
 )
-from app.services.bulk import run_row_imports
 from app.services.bulk import template as build_template
-from app.services.bulk import write_table
 from app.services.goal import GoalService
 from app.services.notification import Notifier
 
@@ -234,7 +234,7 @@ class ProjectService:
         if not is_manager(self.user):
             raise PermissionDenied("Only managers can delete projects")
         p = self.get(project_id)
-        self._soft_delete_project(p, datetime.now(timezone.utc))
+        self._soft_delete_project(p, datetime.now(UTC))
         self.db.commit()
 
     def bulk_delete(self, project_ids: list[uuid.UUID], password: str) -> tuple[int, int]:
@@ -246,7 +246,7 @@ class ProjectService:
             password, self.user.hashed_password
         ):
             raise BadRequest("Password confirmation is incorrect")
-        ts = datetime.now(timezone.utc)
+        ts = datetime.now(UTC)
         deleted = 0
         skipped = 0
         for pid in project_ids:
