@@ -43,7 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/workflow", label: "Workflow Guide", icon: Route },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/guest-posts", label: "Guest Posts", icon: FileText },
+  { href: "/guest-posts", label: "Guest Post Links", icon: FileText },
   { href: "/websites", label: "Websites", icon: Globe },
   { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/clients", label: "Clients", icon: Building2, managerOnly: true },
@@ -62,9 +62,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/trash", label: "Trash", icon: Trash2, managerOnly: true },
   {
     href: "/audit-logs",
-    label: "Audit Logs",
+    label: "Activity Log",
     icon: ScrollText,
-    adminOnly: true,
+    managerOnly: true,
   },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ];

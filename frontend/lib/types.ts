@@ -421,12 +421,24 @@ export interface GuestPostListItem {
   contact_email: string | null;
   assigned_user: UserRef | null;
   status: string;
+  review_status: string;
+  added_by: UserRef | null;
   outreach_date: string | null;
   live_link_date: string | null;
   live_link: string | null;
   anchor_text: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Aggregate counts returned by `GET /guest-posts/stats` (role-scoped). */
+export interface GuestPostStats {
+  total: number;
+  published: number;
+  pending: number;
+  this_month: number;
+  by_user: { name: string; count: number }[];
+  by_project: { name: string; count: number }[];
 }
 
 export interface StatusHistoryEntry {

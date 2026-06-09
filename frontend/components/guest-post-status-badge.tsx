@@ -48,4 +48,44 @@ export function GuestPostStatusBadge({
   );
 }
 
+/**
+ * Review-workflow colours:
+ *  - draft     → slate (neutral)
+ *  - submitted → amber (awaiting a manager)
+ *  - approved  → green
+ *  - rejected  → red
+ */
+const REVIEW_STATUS_STYLES: Record<string, string> = {
+  draft: "bg-slate-100 text-slate-600",
+  submitted: "bg-amber-100 text-amber-700",
+  approved: "bg-green-100 text-green-700",
+  rejected: "bg-red-100 text-red-700",
+};
+
+/** Human-friendly label for a review status (e.g. `submitted` → "Submitted"). */
+export function reviewStatusLabel(status: string): string {
+  const text = status.replace(/_/g, " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** Coloured pill for a guest-post review status. Falls back to a neutral style. */
+export function ReviewStatusBadge({
+  status,
+  className,
+}: GuestPostStatusBadgeProps) {
+  const style =
+    REVIEW_STATUS_STYLES[status] ?? "bg-muted text-muted-foreground";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+        style,
+        className,
+      )}
+    >
+      {reviewStatusLabel(status)}
+    </span>
+  );
+}
+
 export default GuestPostStatusBadge;

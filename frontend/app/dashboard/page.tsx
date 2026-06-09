@@ -8,6 +8,7 @@ import {
   CircleSlash,
   ClipboardList,
   Coins,
+  FileText,
   FolderKanban,
   Link2,
   PauseCircle,
@@ -31,6 +32,7 @@ import type {
   Activity,
   BudgetUsagePoint,
   DashboardSummary,
+  GuestPostStats,
   LedgerStats,
   MonthlyLinksPoint,
   TaskListItem,
@@ -48,6 +50,7 @@ import {
   getRecentActivity,
   getSummary,
 } from "@/services/dashboard-service";
+import { getGuestPostStats } from "@/services/guest-post-service";
 import { getLedgerStats } from "@/services/payment-service";
 import { listTasks } from "@/services/task-service";
 
@@ -84,6 +87,7 @@ export default function DashboardPage() {
   const [links, setLinks] = useState<MonthlyLinksPoint[]>([]);
   const [budget, setBudget] = useState<BudgetUsagePoint[]>([]);
   const [ledger, setLedger] = useState<LedgerStats | null>(null);
+  const [gpStats, setGpStats] = useState<GuestPostStats | null>(null);
   const [overdue, setOverdue] = useState<TaskListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,18 +98,21 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
-      // Core summary + charts + activity load together; ledger stats and
-      // overdue tasks are best-effort so one failure can't blank the page.
-      const [core, ledgerRes, overdueRes] = await Promise.allSettled([
-        Promise.all([
-          getSummary(),
-          getRecentActivity(10),
-          getMonthlyLinks(year),
-          getBudgetUsage(year),
-        ]),
-        getLedgerStats(),
-        listTasks({ status: "overdue", page_size: 50 }),
-      ]);
+      // Core summary + charts + activity load together; ledger stats, guest
+      // post stats, and overdue tasks are best-effort so one failure can't
+      // blank the page.
+      const [core, ledgerRes, gpStatsRes, overdueRes] =
+        await Promise.allSettled([
+          Promise.all([
+            getSummary(),
+            getRecentActivity(10),
+            getMonthlyLinks(year),
+            getBudgetUsage(year),
+          ]),
+          getLedgerStats(),
+          getGuestPostStats(),
+          listTasks({ status: "overdue", page_size: 50 }),
+        ]);
 
       if (!active) return;
 
@@ -125,6 +132,7 @@ export default function DashboardPage() {
       }
 
       setLedger(ledgerRes.status === "fulfilled" ? ledgerRes.value : null);
+      setGpStats(gpStatsRes.status === "fulfilled" ? gpStatsRes.value : null);
       setOverdue(
         overdueRes.status === "fulfilled" ? overdueRes.value.items : [],
       );
@@ -271,6 +279,50 @@ export default function DashboardPage() {
               href="/projects"
             />
           </section>
+
+          {/* Guest Post Links snapshot */}
+          {gpStats && (
+            <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <h2 className="flex items-center gap-2 text-base font-semibold text-[#1A1F4D]">
+                  <FileText className="h-4 w-4 text-primary" />
+                  Guest Post Links
+                </h2>
+                <Link
+                  href="/guest-posts"
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  View all
+                </Link>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Total
+                  </p>
+                  <p className="mt-1 text-2xl font-bold tracking-tight text-[#1A1F4D]">
+                    {gpStats.total}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Published
+                  </p>
+                  <p className="mt-1 text-2xl font-bold tracking-tight text-green-600">
+                    {gpStats.published}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Pending
+                  </p>
+                  <p className="mt-1 text-2xl font-bold tracking-tight text-amber-600">
+                    {gpStats.pending}
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Overdue tasks */}
           <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">

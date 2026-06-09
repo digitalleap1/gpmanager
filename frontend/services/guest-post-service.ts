@@ -13,6 +13,7 @@ import type {
   GuestPostListItem,
   GuestPostListParams,
   GuestPostPublish,
+  GuestPostStats,
   GuestPostUpdate,
   Page,
 } from "@/lib/types";
@@ -85,4 +86,30 @@ export function publish(
 
 export function removeGuestPost(id: string): Promise<void> {
   return api.delete<void>(`/guest-posts/${id}`);
+}
+
+/* ------------------------------------------------------------------ *
+ * Review workflow + stats
+ * ------------------------------------------------------------------ */
+
+/** Submit a draft link for manager review (creator/assignee/managers). */
+export function submitForReview(id: string): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/submit-review`, {});
+}
+
+/** Approve or reject a submitted link (managers only). */
+export function reviewGuestPost(
+  id: string,
+  approve: boolean,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/review`, {
+    approve,
+    note: note ?? null,
+  });
+}
+
+/** Role-scoped aggregate stats for the Guest Post Links widgets. */
+export function getGuestPostStats(): Promise<GuestPostStats> {
+  return api.get<GuestPostStats>("/guest-posts/stats");
 }
