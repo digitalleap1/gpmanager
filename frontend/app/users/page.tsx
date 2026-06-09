@@ -10,7 +10,15 @@ import {
   UserX,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/hooks/use-auth";
@@ -68,8 +76,9 @@ type ModalState =
   | { kind: "password"; user: UserAdminRead }
   | null;
 
-export default function UsersPage() {
+function UsersPageInner() {
   const { user: me } = useAuth();
+  const searchParams = useSearchParams();
   const isAdmin = Boolean(
     me && (me.is_superuser || me.roles.includes("admin")),
   );
@@ -110,6 +119,13 @@ export default function UsersPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Open the create modal when arriving via the quick-action (?create=1).
+  useEffect(() => {
+    if (isAdmin && searchParams.get("create") === "1") {
+      setModal({ kind: "create" });
+    }
+  }, [isAdmin, searchParams]);
 
   // Roles for the create/edit selects (fetched once).
   useEffect(() => {
@@ -411,6 +427,14 @@ export default function UsersPage() {
         />
       )}
     </AppShell>
+  );
+}
+
+export default function UsersPage() {
+  return (
+    <Suspense fallback={null}>
+      <UsersPageInner />
+    </Suspense>
   );
 }
 

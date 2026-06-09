@@ -2,7 +2,9 @@
 
 import { Archive, ArchiveRestore, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -36,8 +38,9 @@ import { listUsers } from "@/services/user-service";
 const PAGE_SIZE = 20;
 const STATUS_OPTIONS = ["active", "completed", "hold", "cancelled"] as const;
 
-export default function ProjectsPage() {
+function ProjectsPageInner() {
   const { user: me } = useAuth();
+  const searchParams = useSearchParams();
   // Managers (admins + team leads) get the bulk-select + bulk-assign UI.
   const isManager = Boolean(
     me &&
@@ -76,6 +79,16 @@ export default function ProjectsPage() {
 
   // Bulk-delete (confirm modal) state.
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // "Assign mode" hint, triggered by the quick-action (?assign=1). The bulk
+  // bar only appears once rows are selected, so we show a banner prompting
+  // the manager to pick projects to assign.
+  const [assignHint, setAssignHint] = useState(false);
+  useEffect(() => {
+    if (isManager && searchParams.get("assign") === "1") {
+      setAssignHint(true);
+    }
+  }, [isManager, searchParams]);
 
   // Debounce the search box into the active `search` filter.
   useEffect(() => {
@@ -400,6 +413,25 @@ export default function ProjectsPage() {
           </div>
         )}
 
+        {/* Assign-mode hint (from the quick action). Hidden once rows are
+            selected, since the bulk-action bar then provides the assign UI. */}
+        {isManager && assignHint && selected.size === 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-[#1A1F4D]">
+            <span>
+              Select one or more projects below to assign an{" "}
+              <span className="font-medium">assignee</span> or{" "}
+              <span className="font-medium">team lead</span> in bulk.
+            </span>
+            <button
+              type="button"
+              onClick={() => setAssignHint(false)}
+              className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Sticky bulk-action bar (managers only, ≥1 row selected) */}
         {isManager && selected.size > 0 && (
           <div className="sticky top-2 z-20 flex flex-col gap-3 rounded-xl border border-primary/30 bg-card p-3 shadow-md sm:flex-row sm:items-center sm:gap-2">
@@ -688,6 +720,14 @@ export default function ProjectsPage() {
         />
       )}
     </AppShell>
+  );
+}
+
+export default function ProjectsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProjectsPageInner />
+    </Suspense>
   );
 }
 

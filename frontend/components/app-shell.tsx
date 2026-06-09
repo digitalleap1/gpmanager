@@ -28,6 +28,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { Logo } from "@/components/logo";
 import { NotificationBell } from "@/components/notification-bell";
+import { QuickActionButton } from "@/components/quick-action-button";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
@@ -256,6 +257,9 @@ export function AppShell({ title, children }: AppShellProps) {
 
         <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
+
+      {/* Global quick-action FAB — role-aware, shown on every authed page. */}
+      <QuickActionButton />
     </div>
   );
 }

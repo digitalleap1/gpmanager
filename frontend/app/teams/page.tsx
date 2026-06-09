@@ -11,7 +11,9 @@ import {
   Users as UsersIcon,
   X,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -64,8 +66,9 @@ type ModalState =
   | { kind: "manage"; team: TeamListItem }
   | null;
 
-export default function TeamsPage() {
+function TeamsPageInner() {
   const { user: me } = useAuth();
+  const searchParams = useSearchParams();
   const isAdmin = Boolean(
     me && (me.is_superuser || me.roles.includes("admin")),
   );
@@ -101,6 +104,13 @@ export default function TeamsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Open the create modal when arriving via the quick-action (?create=1).
+  useEffect(() => {
+    if (isAdmin && searchParams.get("create") === "1") {
+      setModal({ kind: "create" });
+    }
+  }, [isAdmin, searchParams]);
 
   // Users for the lead / member pickers (fetched once).
   useEffect(() => {
@@ -259,6 +269,14 @@ export default function TeamsPage() {
         />
       )}
     </AppShell>
+  );
+}
+
+export default function TeamsPage() {
+  return (
+    <Suspense fallback={null}>
+      <TeamsPageInner />
+    </Suspense>
   );
 }
 

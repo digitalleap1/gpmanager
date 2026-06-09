@@ -61,3 +61,8 @@ docs/*.xlsx
 
 # stray xlsx at repo root (real data) must never be committed
 /*.xlsx
+
+# Local DB backups (contain real client data — never commit)
+.backups/
+backend/.backups/
+*.sql
