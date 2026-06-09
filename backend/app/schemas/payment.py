@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
-from app.models.payment import Payment, PaymentStatusHistory
+from app.models.payment import Payment, PaymentComment, PaymentStatusHistory
 from app.schemas.refs import UserRef
 
 PAYMENT_STATUSES = {"pending", "negotiation", "paid", "free", "cancelled", "rejected"}
@@ -185,8 +185,29 @@ class PaymentListItem(BaseModel):
         )
 
 
+class PaymentCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class PaymentCommentRead(BaseModel):
+    id: uuid.UUID
+    author: UserRef | None
+    body: str
+    created_at: datetime
+
+    @classmethod
+    def from_comment(cls, c: PaymentComment) -> PaymentCommentRead:
+        return cls(
+            id=c.id,
+            author=UserRef(id=c.author.id, full_name=c.author.full_name) if c.author else None,
+            body=c.body,
+            created_at=c.created_at,
+        )
+
+
 class PaymentDetail(PaymentListItem):
     status_history: list[PaymentStatusHistoryRead]
+    comments: list[PaymentCommentRead]
 
     @classmethod
     def from_payment_detail(cls, p: Payment) -> PaymentDetail:
@@ -194,4 +215,5 @@ class PaymentDetail(PaymentListItem):
         return cls(
             **base,
             status_history=[PaymentStatusHistoryRead.from_row(h) for h in p.status_history],
+            comments=[PaymentCommentRead.from_comment(c) for c in p.comments],
         )

@@ -77,6 +77,31 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="PaymentStatusHistory.created_at.desc()",
     )
+    comments: Mapped[list[PaymentComment]] = relationship(
+        back_populates="payment",
+        cascade="all, delete-orphan",
+        order_by="PaymentComment.created_at",
+    )
+
+
+class PaymentComment(UUIDPrimaryKeyMixin, Base):
+    """Request note / clarification thread on a payment (the request workflow)."""
+
+    __tablename__ = "payment_comments"
+
+    payment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("payments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    payment: Mapped[Payment] = relationship(back_populates="comments")
+    author: Mapped[User | None] = relationship(foreign_keys=[author_id], lazy="joined")
 
 
 class PaymentStatusHistory(UUIDPrimaryKeyMixin, Base):

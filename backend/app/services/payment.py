@@ -15,7 +15,7 @@ from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_manager
 from app.core.scope import accessible_user_ids
-from app.models.payment import Payment, PaymentStatusHistory
+from app.models.payment import Payment, PaymentComment, PaymentStatusHistory
 from app.models.project import Project, ProjectMonthlyBudget
 from app.models.user import User
 from app.models.website import Website
@@ -136,18 +136,62 @@ class PaymentService:
                 "status": p.status,
             },
         )
-        Notifier(self.db).notify_admins(
+        # Payment request workflow: a member/lead recording a payment is a
+        # request — notify the admins AND the project's team lead for review.
+        notifier = Notifier(self.db)
+        notifier.notify_admins(
             company_id=self.company_id,
-            type="payment_created",
-            title="Payment recorded",
-            body=f"{self.user.full_name} recorded a payment ({p.status}).",
+            type="payment_requested",
+            title="Payment request",
+            body=f"{self.user.full_name} requested a payment ({p.status}).",
             entity_type="payment",
             entity_id=p.id,
             exclude=self.user.id,
         )
+        lead_id = p.project.team_lead_id if p.project else None
+        if lead_id and lead_id != self.user.id:
+            notifier.notify(
+                company_id=self.company_id,
+                user_id=lead_id,
+                type="payment_requested",
+                title="Payment request",
+                body=f"{self.user.full_name} requested a payment on '{p.project.name}'.",
+                entity_type="payment",
+                entity_id=p.id,
+            )
         self.db.commit()
         self.db.refresh(p)
         return p
+
+    # --- request workflow: comments / clarification thread ---
+    def add_comment(self, payment_id: uuid.UUID, body: str) -> PaymentComment:
+        p = self.get(payment_id)  # visibility/scope check
+        comment = PaymentComment(payment_id=p.id, author_id=self.user.id, body=body)
+        self.db.add(comment)
+        notifier = Notifier(self.db)
+        actor_is_admin = is_manager(self.user) and "admin" in self.user.role_slugs
+        body_txt = f"{self.user.full_name} commented on a payment: \"{body[:80]}\""
+        if actor_is_admin:
+            # Admin requesting clarification / replying -> notify the requester.
+            for uid in {p.created_by, p.attributed_to_id}:
+                if uid and uid != self.user.id:
+                    notifier.notify(
+                        company_id=self.company_id, user_id=uid, type="payment_comment",
+                        title="Payment update", body=body_txt,
+                        entity_type="payment", entity_id=p.id,
+                    )
+        else:
+            # Requester adding a note -> notify the admins.
+            notifier.notify_admins(
+                company_id=self.company_id, type="payment_comment", title="Payment comment",
+                body=body_txt, entity_type="payment", entity_id=p.id, exclude=self.user.id,
+            )
+        self.db.commit()
+        self.db.refresh(comment)
+        return comment
+
+    def list_comments(self, payment_id: uuid.UUID) -> list[PaymentComment]:
+        return list(self.get(payment_id).comments)
 
     def update(self, payment_id: uuid.UUID, data: PaymentUpdate) -> Payment:
         p = self.get(payment_id)

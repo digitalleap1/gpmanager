@@ -33,7 +33,11 @@ from app.models.lookups import Country, Language, Niche  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 
 # Module 7 — Payments
-from app.models.payment import Payment, PaymentStatusHistory  # noqa: F401
+from app.models.payment import (  # noqa: F401
+    Payment,
+    PaymentComment,
+    PaymentStatusHistory,
+)
 
 # Module 3 — Projects + Module 4 — Goals/Budgets
 from app.models.project import (  # noqa: F401

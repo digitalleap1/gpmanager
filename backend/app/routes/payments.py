@@ -13,6 +13,8 @@ from app.schemas.common import Page
 from app.schemas.common_bulk import ImportResult
 from app.schemas.ledger import LedgerStats
 from app.schemas.payment import (
+    PaymentCommentCreate,
+    PaymentCommentRead,
     PaymentCreate,
     PaymentDetail,
     PaymentListItem,
@@ -133,6 +135,28 @@ def change_status(
 ) -> PaymentListItem:
     return PaymentListItem.from_payment(
         PaymentService(db, user).set_status(payment_id, body.status, body.note)
+    )
+
+
+# --- request workflow comments / clarification thread ---
+@router.get("/{payment_id}/comments", response_model=list[PaymentCommentRead])
+def list_payment_comments(
+    payment_id: uuid.UUID, user: CurrentUser, db: DbSession
+) -> list[PaymentCommentRead]:
+    return [
+        PaymentCommentRead.from_comment(c)
+        for c in PaymentService(db, user).list_comments(payment_id)
+    ]
+
+
+@router.post(
+    "/{payment_id}/comments", response_model=PaymentCommentRead, status_code=status.HTTP_201_CREATED
+)
+def add_payment_comment(
+    payment_id: uuid.UUID, body: PaymentCommentCreate, user: CurrentUser, db: DbSession
+) -> PaymentCommentRead:
+    return PaymentCommentRead.from_comment(
+        PaymentService(db, user).add_comment(payment_id, body.body)
     )
 
 
