@@ -317,6 +317,41 @@ export interface ProjectDetail extends ProjectListItem {
   comments: ProjectComment[];
 }
 
+/**
+ * Aggregate metrics for a single project (`GET /projects/{id}/overview`).
+ * Cost-per-link / cost-per-website are `null` until there is published work
+ * to divide spend across.
+ */
+export interface ProjectOverview {
+  budget_assigned: number;
+  budget_consumed: number;
+  budget_pending: number;
+  budget_remaining: number;
+  budget_currency: string;
+  cost_per_link: number | null;
+  cost_per_website: number | null;
+  target_links: number;
+  total_links: number;
+  published_links: number;
+  pending_links: number;
+  rejected_links: number;
+  websites_used: number;
+  payments_count: number;
+  payments_paid: number;
+  payments_pending: number;
+  team_size: number;
+  tasks_total: number;
+  tasks_completed: number;
+}
+
+/** One website's contribution to a project (`GET /projects/{id}/websites`). */
+export interface WebsiteUsedItem {
+  website: string;
+  links: number;
+  spend: number;
+  published: number;
+}
+
 export interface ProjectCreate {
   name: string;
   main_niche_id?: number | null;

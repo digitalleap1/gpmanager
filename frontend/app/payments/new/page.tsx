@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { PaymentForm } from "@/components/payment-form";
@@ -10,8 +10,10 @@ import { ApiError } from "@/lib/api";
 import type { PaymentCreate } from "@/lib/types";
 import { createPayment } from "@/services/payment-service";
 
-export default function NewPaymentPage() {
+function NewPaymentInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get("project_id");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,21 +34,34 @@ export default function NewPaymentPage() {
   }
 
   return (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <Link
+        href={projectId ? `/projects/${projectId}?tab=payments` : "/payments"}
+        className="text-sm text-muted-foreground hover:text-foreground"
+      >
+        ← Back
+      </Link>
+      <PaymentForm
+        initial={projectId ? { project_id: projectId } : undefined}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel="Create payment"
+        error={error}
+      />
+    </div>
+  );
+}
+
+export default function NewPaymentPage() {
+  return (
     <AppShell title="New Payment">
-      <div className="mx-auto max-w-3xl space-y-4">
-        <Link
-          href="/payments"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Back to payments
-        </Link>
-        <PaymentForm
-          onSubmit={handleSubmit}
-          submitting={submitting}
-          submitLabel="Create payment"
-          error={error}
-        />
-      </div>
+      <Suspense
+        fallback={
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        }
+      >
+        <NewPaymentInner />
+      </Suspense>
     </AppShell>
   );
 }

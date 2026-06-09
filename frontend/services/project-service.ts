@@ -6,6 +6,7 @@
 import { api } from "@/lib/api";
 import { downloadFile, uploadFile } from "@/lib/file-transfer";
 import type {
+  AuditLogRead,
   BulkAssignResult,
   BulkImportResult,
   MonthlyBudget,
@@ -17,6 +18,8 @@ import type {
   ProjectListItem,
   ProjectListParams,
   ProjectMember,
+  ProjectOverview,
+  WebsiteUsedItem,
 } from "@/lib/types";
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -56,6 +59,26 @@ export function listProjects(
 
 export function getProject(id: string): Promise<ProjectDetail> {
   return api.get<ProjectDetail>(`/projects/${id}`);
+}
+
+/* --- Project Hub: overview, websites, activity --- */
+
+/** Aggregate budget / link / task / team metrics for a single project. */
+export function getProjectOverview(id: string): Promise<ProjectOverview> {
+  return api.get<ProjectOverview>(`/projects/${id}/overview`);
+}
+
+/** The websites used on a project, with link counts and spend. */
+export function getProjectWebsites(id: string): Promise<WebsiteUsedItem[]> {
+  return api.get<WebsiteUsedItem[]>(`/projects/${id}/websites`);
+}
+
+/** Recent audit-log activity scoped to a single project (newest first). */
+export function getProjectActivity(
+  id: string,
+  limit = 40,
+): Promise<AuditLogRead[]> {
+  return api.get<AuditLogRead[]>(`/projects/${id}/activity?limit=${limit}`);
 }
 
 export function createProject(data: ProjectCreate): Promise<ProjectListItem> {

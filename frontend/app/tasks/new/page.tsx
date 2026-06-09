@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { TaskForm } from "@/components/task-form";
@@ -10,8 +10,10 @@ import { ApiError } from "@/lib/api";
 import type { TaskCreate } from "@/lib/types";
 import { createTask } from "@/services/task-service";
 
-export default function NewTaskPage() {
+function NewTaskInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get("project_id");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,21 +36,34 @@ export default function NewTaskPage() {
   }
 
   return (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <Link
+        href={projectId ? `/projects/${projectId}?tab=tasks` : "/tasks"}
+        className="text-sm text-muted-foreground hover:text-foreground"
+      >
+        ← Back
+      </Link>
+      <TaskForm
+        initial={projectId ? { project_id: projectId } : undefined}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel="Create task"
+        error={error}
+      />
+    </div>
+  );
+}
+
+export default function NewTaskPage() {
+  return (
     <AppShell title="New Task">
-      <div className="mx-auto max-w-3xl space-y-4">
-        <Link
-          href="/tasks"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Back to tasks
-        </Link>
-        <TaskForm
-          onSubmit={handleSubmit}
-          submitting={submitting}
-          submitLabel="Create task"
-          error={error}
-        />
-      </div>
+      <Suspense
+        fallback={
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        }
+      >
+        <NewTaskInner />
+      </Suspense>
     </AppShell>
   );
 }
