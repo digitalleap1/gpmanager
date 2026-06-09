@@ -1,0 +1,16 @@
+# Dependencies installed INTO the Vercel serverless function.
+# Vercel installs a Python function's deps from a requirements.txt adjacent to the
+# entrypoint (api/index.py), NOT from the repo-root requirements.txt (that one is
+# only used for framework detection). Runtime deps only — uvicorn/alembic are not
+# imported at request time, so they're omitted to keep the bundle small.
+fastapi==0.115.6
+sqlalchemy==2.0.36
+psycopg[binary]==3.2.3
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+python-jose[cryptography]==3.3.0
+bcrypt==4.0.1
+python-multipart==0.0.20
+openpyxl==3.1.5
+python-dotenv==1.0.1
