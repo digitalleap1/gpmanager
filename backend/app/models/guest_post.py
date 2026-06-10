@@ -59,6 +59,15 @@ class GuestPost(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Full project workflow state machine (research -> ... -> completed).
+    workflow_status: Mapped[str] = mapped_column(String(30), default="research", nullable=False)
+    content_writer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    # The payment ticket created when payment is requested (Step 5).
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("payments.id", ondelete="SET NULL")
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
@@ -67,6 +76,9 @@ class GuestPost(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     project: Mapped[Project] = relationship(lazy="joined")
     assigned_user: Mapped[User | None] = relationship(
         foreign_keys=[assigned_user_id], lazy="joined"
+    )
+    content_writer: Mapped[User | None] = relationship(
+        foreign_keys=[content_writer_id], lazy="joined"
     )
     created_by_user: Mapped[User | None] = relationship(foreign_keys=[created_by], lazy="joined")
     status_history: Mapped[list[GuestPostStatusHistory]] = relationship(

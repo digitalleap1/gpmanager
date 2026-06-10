@@ -99,12 +99,20 @@ ROLE_PERMISSIONS: dict[str, set[str] | str] = {
         "task.view", "task.update",
         "notification.view",
     },
+    "content_writer": {
+        "dashboard.view",
+        "project.view",
+        "guest_post.view", "guest_post.update",
+        "task.view", "task.update",
+        "notification.view",
+    },
 }
 
 ROLES: list[tuple[str, str]] = [
     ("admin", "Admin"),
     ("team_lead", "Team Lead"),
     ("user", "User"),
+    ("content_writer", "Content Writer"),
 ]
 
 

@@ -121,9 +121,11 @@ class GuestPostListItem(BaseModel):
     price: float | None
     contact_email: str | None
     assigned_user: UserRef | None
+    content_writer: UserRef | None
     added_by: UserRef | None
     status: str
     review_status: str
+    workflow_status: str
     outreach_date: date | None
     live_link_date: date | None
     live_link: str | None
@@ -150,9 +152,15 @@ class GuestPostListItem(BaseModel):
                 if gp.assigned_user
                 else None
             ),
+            content_writer=(
+                UserRef(id=gp.content_writer.id, full_name=gp.content_writer.full_name)
+                if gp.content_writer
+                else None
+            ),
             added_by=UserRef(id=creator.id, full_name=creator.full_name) if creator else None,
             status=gp.status,
             review_status=gp.review_status,
+            workflow_status=gp.workflow_status,
             outreach_date=gp.outreach_date,
             live_link_date=gp.live_link_date,
             live_link=gp.live_link,
@@ -179,6 +187,31 @@ class GuestPostDetail(GuestPostListItem):
 class ReviewDecision(BaseModel):
     approve: bool
     note: str | None = Field(default=None, max_length=255)
+    # When approving a site that needs paying before publish, route via the
+    # advance-payment branch instead of straight to content writing.
+    advance: bool = False
+
+
+class WorkflowNote(BaseModel):
+    """Generic transition with an optional stage comment."""
+
+    note: str | None = Field(default=None, max_length=500)
+
+
+class WorkflowPublish(BaseModel):
+    live_url: str = Field(min_length=1, max_length=700)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class WorkflowPaymentRequest(BaseModel):
+    amount: float | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, max_length=3)
+    payment_type: str | None = Field(default=None, max_length=255)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class WorkflowAssignWriter(BaseModel):
+    writer_id: uuid.UUID | None = None
 
 
 class NamedCount(BaseModel):

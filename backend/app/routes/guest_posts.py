@@ -18,7 +18,12 @@ from app.schemas.guest_post import (
     PublishRequest,
     ReviewDecision,
     StatusChange,
+    WorkflowAssignWriter,
+    WorkflowNote,
+    WorkflowPaymentRequest,
+    WorkflowPublish,
 )
+from app.services.gp_workflow import GuestPostWorkflowService
 from app.services.guest_post import GuestPostService
 
 router = APIRouter()
@@ -77,7 +82,7 @@ def get_guest_post(gp_id: uuid.UUID, user: CurrentUser, db: DbSession) -> GuestP
 
 @router.post("/{gp_id}/submit-review", response_model=GuestPostListItem)
 def submit_for_review(gp_id: uuid.UUID, user: CurrentUser, db: DbSession) -> GuestPostListItem:
-    return GuestPostListItem.from_gp(GuestPostService(db, user).submit_for_review(gp_id))
+    return GuestPostListItem.from_gp(GuestPostWorkflowService(db, user).submit_for_review(gp_id))
 
 
 @router.post("/{gp_id}/review", response_model=GuestPostListItem)
@@ -85,8 +90,78 @@ def review_guest_post(
     gp_id: uuid.UUID, body: ReviewDecision, user: CurrentUser, db: DbSession
 ) -> GuestPostListItem:
     return GuestPostListItem.from_gp(
-        GuestPostService(db, user).review(gp_id, body.approve, body.note)
+        GuestPostWorkflowService(db, user).review(gp_id, body.approve, body.note, body.advance)
     )
+
+
+# --- Guest Post Project Workflow (state machine) transitions ---
+def _wf(db: Session, user: CurrentUser) -> GuestPostWorkflowService:
+    return GuestPostWorkflowService(db, user)
+
+
+@router.post("/{gp_id}/workflow/assign-writer", response_model=GuestPostListItem)
+def wf_assign_writer(
+    gp_id: uuid.UUID, body: WorkflowAssignWriter, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).assign_writer(gp_id, body.writer_id))
+
+
+@router.post("/{gp_id}/workflow/content", response_model=GuestPostListItem)
+def wf_submit_content(
+    gp_id: uuid.UUID, body: WorkflowNote, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).submit_content(gp_id, body.note))
+
+
+@router.post("/{gp_id}/workflow/send-client", response_model=GuestPostListItem)
+def wf_send_to_client(
+    gp_id: uuid.UUID, body: WorkflowNote, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).send_to_client(gp_id, body.note))
+
+
+@router.post("/{gp_id}/workflow/publish", response_model=GuestPostListItem)
+def wf_publish(
+    gp_id: uuid.UUID, body: WorkflowPublish, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).mark_published(gp_id, body.live_url, body.note))
+
+
+@router.post("/{gp_id}/workflow/request-payment", response_model=GuestPostListItem)
+def wf_request_payment(
+    gp_id: uuid.UUID, body: WorkflowPaymentRequest, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(
+        _wf(db, user).request_payment(gp_id, body.amount, body.currency, body.payment_type, body.note)
+    )
+
+
+@router.post("/{gp_id}/workflow/payment-sent", response_model=GuestPostListItem)
+def wf_payment_sent(
+    gp_id: uuid.UUID, body: WorkflowNote, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).mark_payment_sent(gp_id, body.note))
+
+
+@router.post("/{gp_id}/workflow/confirm-payment", response_model=GuestPostListItem)
+def wf_confirm_payment(
+    gp_id: uuid.UUID, body: WorkflowNote, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).confirm_payment(gp_id, body.note))
+
+
+@router.post("/{gp_id}/workflow/reopen-payment", response_model=GuestPostListItem)
+def wf_reopen_payment(
+    gp_id: uuid.UUID, body: WorkflowNote, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).reopen_payment(gp_id, body.note))
+
+
+@router.post("/{gp_id}/workflow/approve-advance", response_model=GuestPostListItem)
+def wf_approve_advance(
+    gp_id: uuid.UUID, body: WorkflowNote, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).approve_advance(gp_id, body.note))
 
 
 @router.patch("/{gp_id}", response_model=GuestPostListItem)
