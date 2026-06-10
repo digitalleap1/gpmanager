@@ -229,9 +229,12 @@ export function QuickActionButton() {
         )}
       />
 
+      {/* pointer-events-none on the container so the (tall, always-mounted) card
+          stack never blocks clicks on the page behind it. The FAB button and the
+          open cards re-enable pointer events on themselves. */}
       <div
         ref={containerRef}
-        className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3"
+        className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3"
       >
         {/* Action card stack (above the button). Always mounted for smooth
             staggered transitions; only interactive while open. */}
@@ -239,7 +242,10 @@ export function QuickActionButton() {
           id="quick-action-menu"
           role="menu"
           aria-label="Quick actions"
-          className="flex flex-col items-end gap-2.5"
+          className={cn(
+            "flex flex-col items-end gap-2.5",
+            open ? "pointer-events-auto" : "pointer-events-none",
+          )}
         >
           {actions.map((action, index) => {
             const Icon = action.icon;
@@ -302,7 +308,7 @@ export function QuickActionButton() {
           aria-expanded={open}
           aria-controls="quick-action-menu"
           className={cn(
-            "flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#E6007E] to-[#c0006a] text-white shadow-xl shadow-[#E6007E]/30 ring-4 ring-white/40 transition-all duration-300 ease-out hover:scale-105 hover:shadow-[#E6007E]/50 focus:outline-none focus-visible:ring-4 focus-visible:ring-[#E6007E]/40 active:scale-95 dark:ring-white/10",
+            "pointer-events-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#E6007E] to-[#c0006a] text-white shadow-xl shadow-[#E6007E]/30 ring-4 ring-white/40 transition-all duration-300 ease-out hover:scale-105 hover:shadow-[#E6007E]/50 focus:outline-none focus-visible:ring-4 focus-visible:ring-[#E6007E]/40 active:scale-95 dark:ring-white/10",
           )}
         >
           <span className="relative flex h-6 w-6 items-center justify-center">
