@@ -9,6 +9,7 @@ import type {
   AuditLogRead,
   BulkAssignResult,
   BulkImportResult,
+  Checklist,
   MonthlyBudget,
   MonthlyGoal,
   Page,
@@ -197,6 +198,28 @@ export function addProjectComment(
   body: string,
 ): Promise<ProjectComment> {
   return api.post<ProjectComment>(`/projects/${id}/comments`, { body });
+}
+
+/* --- Workflow checklist --- */
+
+/** Fetch the project's three-stage workflow checklist. */
+export function getChecklist(projectId: string): Promise<Checklist> {
+  return api.get<Checklist>(`/projects/${projectId}/checklist`);
+}
+
+/**
+ * Assign (or clear, with `null`) the person responsible for one workflow stage.
+ * Creates/updates the underlying Task on the backend. Manager-only — a 403 is
+ * surfaced as an `ApiError`. Returns the updated checklist.
+ */
+export function assignChecklistStage(
+  projectId: string,
+  stageKey: string,
+  assigneeId: string | null,
+): Promise<Checklist> {
+  return api.put<Checklist>(`/projects/${projectId}/checklist/${stageKey}`, {
+    assignee_id: assigneeId,
+  });
 }
 
 /* --- Monthly goals --- */

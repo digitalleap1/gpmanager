@@ -359,6 +359,34 @@ export interface WebsiteUsedItem {
   published: number;
 }
 
+/* --- Project Workflow Checklist (`/projects/{id}/checklist`) --- */
+
+/** The three ordered workflow stages a project moves through. */
+export type ChecklistStageKey =
+  | "website_review"
+  | "content_writing"
+  | "payment";
+
+/** One stage of a project's workflow checklist. */
+export interface ChecklistStage {
+  stage_key: ChecklistStageKey;
+  label: string;
+  assignee: UserRef | null;
+  task_id: string | null;
+  task_status: TaskStatus | null;
+  done: boolean;
+}
+
+/** A project's full workflow checklist (`GET /projects/{id}/checklist`). */
+export interface Checklist {
+  project_id: string;
+  project_name: string;
+  stages: ChecklistStage[];
+  all_done: boolean;
+  completed_count: number;
+  total: number;
+}
+
 export interface ProjectCreate {
   name: string;
   main_niche_id?: number | null;
