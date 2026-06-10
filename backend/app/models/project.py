@@ -178,6 +178,37 @@ class BudgetAdjustment(UUIDPrimaryKeyMixin, Base):
     decider: Mapped[User | None] = relationship(foreign_keys=[decided_by], lazy="joined")
 
 
+class ProjectWorkflowStage(UUIDPrimaryKeyMixin, Base):
+    """Simple per-project workflow checklist: the team lead picks one person per
+    stage (website review / content writing / payment); each assignment spawns a
+    Task for that person. The stage is 'done' when its task is completed."""
+
+    __tablename__ = "project_workflow_stages"
+    __table_args__ = (
+        UniqueConstraint("project_id", "stage_key", name="uq_project_workflow_stage"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    stage_key: Mapped[str] = mapped_column(String(30), nullable=False)
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    project: Mapped[Project] = relationship()
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id], lazy="joined")
+
+
 class ProjectComment(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "project_comments"
 

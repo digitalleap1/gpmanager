@@ -19,6 +19,7 @@ from app.schemas.project import (
     BulkAssignResult,
     BulkDeleteRequest,
     BulkDeleteResult,
+    ChecklistRead,
     CommentCreate,
     CommentRead,
     MemberCreate,
@@ -28,11 +29,13 @@ from app.schemas.project import (
     ProjectListItem,
     ProjectOverview,
     ProjectUpdate,
+    StageAssign,
     WebsiteUsedItem,
 )
 from app.services.goal import GoalService
 from app.services.project import ProjectService
 from app.services.project_hub import ProjectHubService
+from app.services.project_workflow import ProjectWorkflowService
 
 router = APIRouter()
 
@@ -261,3 +264,18 @@ def set_budget(
     db: DbSession,
 ) -> MonthlyBudgetRead:
     return GoalService(db, user).set_budget(project_id, year, month, body.budget_amount)
+
+
+# --- simple workflow checklist (Website Review / Content Writing / Payment) ---
+@router.get("/{project_id}/checklist", response_model=ChecklistRead)
+def get_checklist(project_id: uuid.UUID, user: CurrentUser, db: DbSession) -> ChecklistRead:
+    return ChecklistRead(**ProjectWorkflowService(db, user).checklist(project_id))
+
+
+@router.put("/{project_id}/checklist/{stage_key}", response_model=ChecklistRead)
+def assign_checklist_stage(
+    project_id: uuid.UUID, stage_key: str, body: StageAssign, user: CurrentUser, db: DbSession
+) -> ChecklistRead:
+    return ChecklistRead(
+        **ProjectWorkflowService(db, user).assign(project_id, stage_key, body.assignee_id)
+    )

@@ -131,6 +131,28 @@ class BulkDeleteResult(BaseModel):
     skipped: int
 
 
+class StageAssign(BaseModel):
+    assignee_id: uuid.UUID | None = None
+
+
+class WorkflowStageRead(BaseModel):
+    stage_key: str
+    label: str
+    assignee: UserRef | None
+    task_id: uuid.UUID | None
+    task_status: str | None
+    done: bool
+
+
+class ChecklistRead(BaseModel):
+    project_id: uuid.UUID
+    project_name: str
+    stages: list[WorkflowStageRead]
+    all_done: bool
+    completed_count: int
+    total: int
+
+
 class ProjectOverview(BaseModel):
     budget_assigned: float
     budget_consumed: float

@@ -47,6 +47,7 @@ from app.models.project import (  # noqa: F401
     ProjectMember,
     ProjectMonthlyBudget,
     ProjectMonthlyGoal,
+    ProjectWorkflowStage,
 )
 
 # Module 8 — Tasks
