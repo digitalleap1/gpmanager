@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.routes.audit import router as audit_router
 from app.routes.auth import router as auth_router
+from app.routes.budget import router as budget_router
 from app.routes.clients import router as clients_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.guest_posts import router as guest_posts_router
@@ -37,6 +38,7 @@ api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(clients_router, prefix="/clients", tags=["clients"])
 api_router.include_router(projects_router, prefix="/projects", tags=["projects"])
+api_router.include_router(budget_router, prefix="/budget", tags=["budget"])
 api_router.include_router(lookups_router, prefix="/lookups", tags=["lookups"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(teams_router, prefix="/teams", tags=["teams"])

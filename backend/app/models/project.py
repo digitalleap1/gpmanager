@@ -51,6 +51,12 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     monthly_budget: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
     budget_currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    # Budget Management: the budget figure above is per this period; the
+    # cost-per-link target feeds the consumption summary.
+    budget_period: Mapped[str] = mapped_column(String(10), default="monthly", nullable=False)
+    budget_start_date: Mapped[date | None] = mapped_column(Date)
+    budget_end_date: Mapped[date | None] = mapped_column(Date)
+    cost_per_link_target: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     target_links: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     goal: Mapped[str | None] = mapped_column(Text)
     due_date: Mapped[date | None] = mapped_column(Date)
@@ -142,6 +148,34 @@ class ProjectMonthlyBudget(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     spent_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
 
     project: Mapped[Project] = relationship(back_populates="monthly_budgets")
+
+
+class BudgetAdjustment(UUIDPrimaryKeyMixin, Base):
+    """A requested increase/decrease to a project's budget, pending admin approval."""
+
+    __tablename__ = "budget_adjustments"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    delta_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)  # signed
+    reason: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    project: Mapped[Project] = relationship()
+    requester: Mapped[User | None] = relationship(foreign_keys=[requested_by], lazy="joined")
+    decider: Mapped[User | None] = relationship(foreign_keys=[decided_by], lazy="joined")
 
 
 class ProjectComment(UUIDPrimaryKeyMixin, Base):

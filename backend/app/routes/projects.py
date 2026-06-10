@@ -48,7 +48,7 @@ def list_projects(
     user: CurrentUser,
     db: DbSession,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     search: str | None = None,
     status_: str | None = Query(None, alias="status"),
     client_id: uuid.UUID | None = None,

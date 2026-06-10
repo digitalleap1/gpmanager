@@ -101,16 +101,17 @@ class ProjectService:
             new={"name": p.name},
         )
         notifier = Notifier(self.db)
-        if p.assignee_id:
-            notifier.notify(
-                company_id=self.company_id,
-                user_id=p.assignee_id,
-                type="project_assigned",
-                title="Project assigned",
-                body=f"You were assigned to the project '{p.name}'.",
-                entity_type="project",
-                entity_id=p.id,
-            )
+        for uid, role_word in ((p.assignee_id, "assigned to"), (p.team_lead_id, "team lead of")):
+            if uid and uid != self.user.id:
+                notifier.notify(
+                    company_id=self.company_id,
+                    user_id=uid,
+                    type="project_assigned",
+                    title="Project assigned",
+                    body=f"You were made {role_word} the project '{p.name}'.",
+                    entity_type="project",
+                    entity_id=p.id,
+                )
         notifier.notify_admins(
             company_id=self.company_id,
             type="project_created",
@@ -134,16 +135,19 @@ class ProjectService:
         old = {key: getattr(p, key) for key in changes}
         for key, value in changes.items():
             setattr(p, key, value)
-        if changes.get("assignee_id"):
-            Notifier(self.db).notify(
-                company_id=self.company_id,
-                user_id=changes["assignee_id"],
-                type="project_assigned",
-                title="Project assigned",
-                body=f"You were assigned to the project '{p.name}'.",
-                entity_type="project",
-                entity_id=p.id,
-            )
+        notifier = Notifier(self.db)
+        for field, role_word in (("assignee_id", "assigned to"), ("team_lead_id", "team lead of")):
+            uid = changes.get(field)
+            if uid and uid != self.user.id:
+                notifier.notify(
+                    company_id=self.company_id,
+                    user_id=uid,
+                    type="project_assigned",
+                    title="Project assigned",
+                    body=f"You were made {role_word} the project '{p.name}'.",
+                    entity_type="project",
+                    entity_id=p.id,
+                )
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,

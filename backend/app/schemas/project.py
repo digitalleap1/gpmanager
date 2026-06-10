@@ -14,6 +14,7 @@ from app.schemas.lookup import CountryRead, NicheRead
 from app.schemas.refs import UserRef
 
 PROJECT_STATUSES = {"active", "completed", "hold", "cancelled"}
+BUDGET_PERIODS = {"monthly", "weekly", "daily"}
 
 
 def _validate_currency(value: str | None) -> str | None:
@@ -35,6 +36,10 @@ class ProjectCreate(BaseModel):
     team_lead_id: uuid.UUID | None = None
     monthly_budget: float = Field(default=0, ge=0)
     budget_currency: str = DEFAULT_CURRENCY
+    budget_period: str = "monthly"
+    budget_start_date: date | None = None
+    budget_end_date: date | None = None
+    cost_per_link_target: float | None = Field(default=None, ge=0)
     target_links: int = Field(default=0, ge=0)
     goal: str | None = None
     due_date: date | None = None
@@ -46,6 +51,13 @@ class ProjectCreate(BaseModel):
     def _check_status(cls, value: str) -> str:
         if value not in PROJECT_STATUSES:
             raise ValueError(f"status must be one of {sorted(PROJECT_STATUSES)}")
+        return value
+
+    @field_validator("budget_period")
+    @classmethod
+    def _period(cls, value: str) -> str:
+        if value not in BUDGET_PERIODS:
+            raise ValueError(f"budget_period must be one of {sorted(BUDGET_PERIODS)}")
         return value
 
     @field_validator("budget_currency")
@@ -64,6 +76,10 @@ class ProjectUpdate(BaseModel):
     team_lead_id: uuid.UUID | None = None
     monthly_budget: float | None = Field(default=None, ge=0)
     budget_currency: str | None = None
+    budget_period: str | None = None
+    budget_start_date: date | None = None
+    budget_end_date: date | None = None
+    cost_per_link_target: float | None = Field(default=None, ge=0)
     target_links: int | None = Field(default=None, ge=0)
     goal: str | None = None
     due_date: date | None = None
@@ -75,6 +91,13 @@ class ProjectUpdate(BaseModel):
     def _check_status(cls, value: str | None) -> str | None:
         if value is not None and value not in PROJECT_STATUSES:
             raise ValueError(f"status must be one of {sorted(PROJECT_STATUSES)}")
+        return value
+
+    @field_validator("budget_period")
+    @classmethod
+    def _period(cls, value: str | None) -> str | None:
+        if value is not None and value not in BUDGET_PERIODS:
+            raise ValueError(f"budget_period must be one of {sorted(BUDGET_PERIODS)}")
         return value
 
     @field_validator("budget_currency")
@@ -165,6 +188,10 @@ class ProjectListItem(BaseModel):
     is_archived: bool
     monthly_budget: float
     budget_currency: str
+    budget_period: str
+    budget_start_date: date | None
+    budget_end_date: date | None
+    cost_per_link_target: float | None
     target_links: int
     due_date: date | None
     main_niche: NicheRead | None
@@ -186,6 +213,12 @@ class ProjectListItem(BaseModel):
             is_archived=p.is_archived,
             monthly_budget=float(p.monthly_budget),
             budget_currency=p.budget_currency or "USD",
+            budget_period=p.budget_period or "monthly",
+            budget_start_date=p.budget_start_date,
+            budget_end_date=p.budget_end_date,
+            cost_per_link_target=(
+                float(p.cost_per_link_target) if p.cost_per_link_target is not None else None
+            ),
             target_links=p.target_links,
             due_date=p.due_date,
             main_niche=NicheRead.model_validate(p.main_niche) if p.main_niche else None,

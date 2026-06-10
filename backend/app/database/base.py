@@ -41,6 +41,7 @@ from app.models.payment import (  # noqa: F401
 
 # Module 3 — Projects + Module 4 — Goals/Budgets
 from app.models.project import (  # noqa: F401
+    BudgetAdjustment,
     Project,
     ProjectComment,
     ProjectMember,

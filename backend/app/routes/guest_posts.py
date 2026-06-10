@@ -36,7 +36,7 @@ def list_guest_posts(
     user: CurrentUser,
     db: DbSession,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     project_id: uuid.UUID | None = None,
     status_: str | None = Query(None, alias="status"),
     assigned_user_id: uuid.UUID | None = None,
