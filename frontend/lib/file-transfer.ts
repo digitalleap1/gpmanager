@@ -7,10 +7,8 @@
  * stream blobs / multipart bodies instead.
  */
 
-import { ApiError } from "./api";
+import { ApiError, getApiBase } from "./api";
 import { getAccessToken } from "./auth-tokens";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
 /** Best-effort extraction of a `{ detail }` error message from a response. */
 async function readError(response: Response): Promise<string> {
@@ -65,7 +63,7 @@ export async function downloadFile(
   path: string,
   fallbackName: string,
 ): Promise<void> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${getApiBase()}${path}`, {
     headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
   });
 
@@ -95,7 +93,7 @@ export function downloadCsv(path: string, filename: string): Promise<void> {
  * non-ok response.
  */
 export async function uploadFile<T>(path: string, file: File): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${getApiBase()}${path}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
     body: buildForm(file),
@@ -119,7 +117,7 @@ export async function uploadFileWithFields<T>(
   file: File,
   fields: Record<string, string>,
 ): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${getApiBase()}${path}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
     body: buildForm(file, fields),

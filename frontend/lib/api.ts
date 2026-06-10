@@ -62,6 +62,16 @@ function resolveApiBase(): string {
 
 const API_URL = resolveApiBase();
 
+/**
+ * The resolved API base for the current environment. Use this for any direct
+ * `fetch` outside the JSON `api` client (e.g. binary file download/upload in
+ * lib/file-transfer.ts) so they share the SAME base — including the production
+ * same-origin `/api` proxy — instead of hardcoding localhost.
+ */
+export function getApiBase(): string {
+  return resolveApiBase();
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
