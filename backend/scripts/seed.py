@@ -12,17 +12,26 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.database.session import SessionLocal
 from app.models.company import Company
-from app.models.lookups import Country, Niche
+from app.models.lookups import Country, Language, Niche
 from app.models.user import Permission, Role, User
 from app.utils.slug import slugify
 
 # (iso_code, name)
 COUNTRIES: list[tuple[str, str]] = [
+    ("WW", "Worldwide"),
     ("US", "United States"), ("GB", "United Kingdom"), ("CA", "Canada"),
     ("AU", "Australia"), ("IN", "India"), ("DE", "Germany"), ("FR", "France"),
     ("ES", "Spain"), ("IT", "Italy"), ("NL", "Netherlands"), ("AE", "United Arab Emirates"),
     ("SG", "Singapore"), ("BR", "Brazil"), ("MX", "Mexico"), ("ZA", "South Africa"),
     ("JP", "Japan"), ("SE", "Sweden"), ("PL", "Poland"), ("IE", "Ireland"), ("NZ", "New Zealand"),
+]
+
+LANGUAGES: list[tuple[str, str]] = [
+    ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"),
+    ("it", "Italian"), ("pt", "Portuguese"), ("nl", "Dutch"), ("hi", "Hindi"),
+    ("ar", "Arabic"), ("zh", "Chinese"), ("ja", "Japanese"), ("ru", "Russian"),
+    ("sv", "Swedish"), ("pl", "Polish"), ("tr", "Turkish"), ("id", "Indonesian"),
+    ("ko", "Korean"), ("vi", "Vietnamese"), ("th", "Thai"), ("multi", "Multilingual"),
 ]
 
 NICHES: list[str] = [
@@ -130,8 +139,14 @@ def seed_lookups(db) -> None:
         if slug not in existing_niches:
             db.add(Niche(name=name, slug=slug))
             new_niches += 1
+    existing_langs = {lang.iso_code for lang in db.scalars(select(Language)).all()}
+    new_langs = 0
+    for iso, name in LANGUAGES:
+        if iso not in existing_langs:
+            db.add(Language(iso_code=iso, name=name))
+            new_langs += 1
     db.flush()
-    print(f"  + lookups: {new_countries} countries, {new_niches} niches added")
+    print(f"  + lookups: {new_countries} countries, {new_niches} niches, {new_langs} languages added")
 
 
 def get_or_create_company(db) -> Company:

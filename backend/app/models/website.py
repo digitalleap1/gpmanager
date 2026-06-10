@@ -55,6 +55,7 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     dr: Mapped[int | None] = mapped_column(SmallInteger)
     spam_score: Mapped[int | None] = mapped_column(SmallInteger)
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    price_currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
     email: Mapped[str | None] = mapped_column(String(255))
     contact_person: Mapped[str | None] = mapped_column(String(160))
     guest_post_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

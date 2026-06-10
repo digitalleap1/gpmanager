@@ -22,6 +22,7 @@ class WebsiteCreate(BaseModel):
     dr: int | None = Field(default=None, ge=0, le=100)
     spam_score: int | None = Field(default=None, ge=0, le=100)
     price: float | None = Field(default=None, ge=0)
+    price_currency: str = Field(default="USD", max_length=3)
     email: str | None = Field(default=None, max_length=255)
     contact_person: str | None = Field(default=None, max_length=160)
     guest_post_available: bool = True
@@ -42,6 +43,7 @@ class WebsiteUpdate(BaseModel):
     dr: int | None = Field(default=None, ge=0, le=100)
     spam_score: int | None = Field(default=None, ge=0, le=100)
     price: float | None = Field(default=None, ge=0)
+    price_currency: str | None = Field(default=None, max_length=3)
     email: str | None = Field(default=None, max_length=255)
     contact_person: str | None = Field(default=None, max_length=160)
     guest_post_available: bool | None = None
@@ -96,6 +98,7 @@ class WebsiteListItem(BaseModel):
     dr: int | None
     spam_score: int | None
     price: float | None
+    price_currency: str
     email: str | None
     contact_person: str | None
     guest_post_available: bool
@@ -118,6 +121,7 @@ class WebsiteListItem(BaseModel):
             dr=w.dr,
             spam_score=w.spam_score,
             price=float(w.price) if w.price is not None else None,
+            price_currency=w.price_currency or "USD",
             email=w.email,
             contact_person=w.contact_person,
             guest_post_available=w.guest_post_available,
