@@ -77,6 +77,7 @@ export default function EditWebsitePage({
         dr: website.dr,
         spam_score: website.spam_score,
         price: website.price,
+        price_currency: website.price_currency,
         email: website.email,
         contact_person: website.contact_person,
         guest_post_available: website.guest_post_available,

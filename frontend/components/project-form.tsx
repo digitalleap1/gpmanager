@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import type {
+  BudgetPeriod,
   CountryRef,
   CurrencyRef,
   NicheRef,
@@ -17,6 +18,12 @@ import {
 } from "@/services/lookup-service";
 
 const STATUS_OPTIONS = ["active", "completed", "hold", "cancelled"] as const;
+
+const BUDGET_PERIODS: { value: BudgetPeriod; label: string; per: string }[] = [
+  { value: "monthly", label: "Monthly", per: "per month" },
+  { value: "weekly", label: "Weekly", per: "per week" },
+  { value: "daily", label: "Daily", per: "per day" },
+];
 
 interface ProjectFormProps {
   initial?: Partial<ProjectCreate>;
@@ -63,6 +70,20 @@ export function ProjectForm({
   const [budgetCurrency, setBudgetCurrency] = useState(
     initial?.budget_currency ?? "USD",
   );
+  const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>(
+    initial?.budget_period ?? "monthly",
+  );
+  const [budgetStartDate, setBudgetStartDate] = useState(
+    initial?.budget_start_date ?? "",
+  );
+  const [budgetEndDate, setBudgetEndDate] = useState(
+    initial?.budget_end_date ?? "",
+  );
+  const [costPerLinkTarget, setCostPerLinkTarget] = useState(
+    initial?.cost_per_link_target != null
+      ? String(initial.cost_per_link_target)
+      : "",
+  );
   const [targetLinks, setTargetLinks] = useState(
     initial?.target_links != null ? String(initial.target_links) : "",
   );
@@ -104,8 +125,23 @@ export function ProjectForm({
     };
   }, []);
 
+  // Inline, non-blocking validation: end date must not precede the start date.
+  const dateRangeInvalid =
+    budgetStartDate !== "" &&
+    budgetEndDate !== "" &&
+    budgetEndDate < budgetStartDate;
+
+  // Currency symbol/code shown as the cost-per-link prefix.
+  const currencyAffix =
+    currencies.find((c) => c.code === budgetCurrency)?.symbol ?? budgetCurrency;
+
+  // "per month" / "per week" / "per day" suffix for the amount label.
+  const periodSuffix =
+    BUDGET_PERIODS.find((p) => p.value === budgetPeriod)?.per ?? "per month";
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (dateRangeInvalid) return;
     const values: ProjectCreate = {
       name: name.trim(),
       main_niche_id: toNumberOrNull(mainNicheId),
@@ -115,6 +151,11 @@ export function ProjectForm({
       team_lead_id: teamLeadId || null,
       monthly_budget: monthlyBudget === "" ? 0 : Number(monthlyBudget),
       budget_currency: budgetCurrency,
+      budget_period: budgetPeriod,
+      budget_start_date: budgetStartDate || null,
+      budget_end_date: budgetEndDate || null,
+      cost_per_link_target:
+        costPerLinkTarget.trim() === "" ? null : Number(costPerLinkTarget),
       target_links: targetLinks === "" ? 0 : Number(targetLinks),
       status,
       due_date: dueDate || null,
@@ -264,8 +305,26 @@ export function ProjectForm({
         </div>
 
         <div className="space-y-1.5">
+          <label htmlFor="budget_period" className={labelClass}>
+            Budget period
+          </label>
+          <select
+            id="budget_period"
+            value={budgetPeriod}
+            onChange={(e) => setBudgetPeriod(e.target.value as BudgetPeriod)}
+            className={inputClass}
+          >
+            {BUDGET_PERIODS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
           <label htmlFor="monthly_budget" className={labelClass}>
-            Monthly budget
+            Budget ({periodSuffix})
           </label>
           <div className="flex gap-2">
             <input
@@ -275,7 +334,7 @@ export function ProjectForm({
               step="0.01"
               value={monthlyBudget}
               onChange={(e) => setMonthlyBudget(e.target.value)}
-              className={`${inputClass} flex-1`}
+              className={`${inputClass} min-w-0 flex-1`}
             />
             <select
               id="budget_currency"
@@ -293,6 +352,69 @@ export function ProjectForm({
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className={labelClass}>Budget date range</span>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label
+                htmlFor="budget_start_date"
+                className="text-xs text-muted-foreground"
+              >
+                Start date
+              </label>
+              <input
+                id="budget_start_date"
+                type="date"
+                value={budgetStartDate ?? ""}
+                onChange={(e) => setBudgetStartDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor="budget_end_date"
+                className="text-xs text-muted-foreground"
+              >
+                End date
+              </label>
+              <input
+                id="budget_end_date"
+                type="date"
+                value={budgetEndDate ?? ""}
+                min={budgetStartDate || undefined}
+                onChange={(e) => setBudgetEndDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+          {dateRangeInvalid && (
+            <p className="text-xs text-destructive">
+              End date must be on or after the start date.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="cost_per_link_target" className={labelClass}>
+            Cost-per-link target
+          </label>
+          <div className="flex items-stretch">
+            <span className="inline-flex items-center rounded-l-md border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground">
+              {currencyAffix}
+            </span>
+            <input
+              id="cost_per_link_target"
+              type="number"
+              min={0}
+              step="0.01"
+              value={costPerLinkTarget}
+              onChange={(e) => setCostPerLinkTarget(e.target.value)}
+              placeholder="Optional"
+              className={`${inputClass} min-w-0 flex-1 rounded-l-none`}
+            />
           </div>
         </div>
 
@@ -362,7 +484,7 @@ export function ProjectForm({
 
       <button
         type="submit"
-        disabled={submitting || name.trim() === ""}
+        disabled={submitting || name.trim() === "" || dateRangeInvalid}
         className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
       >
         {submitting ? "Saving…" : submitLabel}

@@ -259,6 +259,9 @@ export interface UserUpdate {
 
 export type ProjectStatus = "active" | "completed" | "hold" | "cancelled";
 
+/** How the budget amount on a project is metered. */
+export type BudgetPeriod = "monthly" | "weekly" | "daily";
+
 export interface ProjectListItem {
   id: string;
   name: string;
@@ -266,6 +269,10 @@ export interface ProjectListItem {
   is_archived: boolean;
   monthly_budget: number;
   budget_currency: string;
+  budget_period: BudgetPeriod;
+  budget_start_date: string | null;
+  budget_end_date: string | null;
+  cost_per_link_target: number | null;
   target_links: number;
   due_date: string | null;
   main_niche: NicheRef | null;
@@ -361,6 +368,10 @@ export interface ProjectCreate {
   team_lead_id?: string | null;
   monthly_budget?: number;
   budget_currency?: string;
+  budget_period?: BudgetPeriod;
+  budget_start_date?: string | null;
+  budget_end_date?: string | null;
+  cost_per_link_target?: number | null;
   target_links?: number;
   goal?: string | null;
   due_date?: string | null;
@@ -566,6 +577,7 @@ export interface WebsiteListItem {
   dr: number | null;
   spam_score: number | null;
   price: number | null;
+  price_currency: string;
   email: string | null;
   contact_person: string | null;
   guest_post_available: boolean;
@@ -594,6 +606,7 @@ export interface WebsiteCreate {
   dr?: number | null;
   spam_score?: number | null;
   price?: number | null;
+  price_currency?: string;
   email?: string | null;
   contact_person?: string | null;
   guest_post_available?: boolean;

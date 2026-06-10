@@ -627,13 +627,17 @@ function ProjectsPageInner() {
                     <td className="px-4 py-3 text-muted-foreground">
                       {p.assignee?.full_name ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">
-                      {p.budget_currency && p.budget_currency !== "USD" && (
-                        <span className="mr-1 text-xs uppercase">
-                          {p.budget_currency}
+                    <td className="px-4 py-3 text-muted-foreground">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="min-w-0 flex-1 truncate text-right tabular-nums">
+                          {formatCurrency(p.monthly_budget)}
                         </span>
-                      )}
-                      {formatCurrency(p.monthly_budget)}
+                        {p.budget_currency && p.budget_currency !== "USD" && (
+                          <span className="w-12 shrink-0 rounded bg-muted px-1.5 py-0.5 text-center text-[10px] font-medium uppercase tracking-wide">
+                            {p.budget_currency}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right text-muted-foreground">
                       {p.target_links}

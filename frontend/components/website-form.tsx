@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 
 import type {
   CountryRef,
+  CurrencyRef,
   LanguageRef,
   NicheRef,
   WebsiteCreate,
 } from "@/lib/types";
 import {
   getCountries,
+  getCurrencies,
   getLanguages,
   getNiches,
 } from "@/services/lookup-service";
@@ -67,6 +69,9 @@ export function WebsiteForm({
   const [price, setPrice] = useState(
     initial?.price != null ? String(initial.price) : "",
   );
+  const [priceCurrency, setPriceCurrency] = useState(
+    initial?.price_currency ?? "USD",
+  );
   const [email, setEmail] = useState(initial?.email ?? "");
   const [contactPerson, setContactPerson] = useState(
     initial?.contact_person ?? "",
@@ -83,24 +88,30 @@ export function WebsiteForm({
   const [countries, setCountries] = useState<CountryRef[]>([]);
   const [languages, setLanguages] = useState<LanguageRef[]>([]);
   const [niches, setNiches] = useState<NicheRef[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const [countriesRes, languagesRes, nichesRes] = await Promise.allSettled([
-        getCountries(),
-        getLanguages(),
-        getNiches(),
-      ]);
+      const [countriesRes, languagesRes, nichesRes, currenciesRes] =
+        await Promise.allSettled([
+          getCountries(),
+          getLanguages(),
+          getNiches(),
+          getCurrencies(),
+        ]);
       if (!active) return;
       if (countriesRes.status === "fulfilled") setCountries(countriesRes.value);
       if (languagesRes.status === "fulfilled") setLanguages(languagesRes.value);
       if (nichesRes.status === "fulfilled") setNiches(nichesRes.value);
+      if (currenciesRes.status === "fulfilled")
+        setCurrencies(currenciesRes.value);
       if (
         countriesRes.status === "rejected" ||
         languagesRes.status === "rejected" ||
-        nichesRes.status === "rejected"
+        nichesRes.status === "rejected" ||
+        currenciesRes.status === "rejected"
       ) {
         setLookupError("Some pickers could not load. You can still save.");
       }
@@ -129,6 +140,7 @@ export function WebsiteForm({
       dr: toNumberOrNull(dr),
       spam_score: toNumberOrNull(spamScore),
       price: toNumberOrNull(price),
+      price_currency: priceCurrency,
       email: email.trim() || null,
       contact_person: contactPerson.trim() || null,
       guest_post_available: guestPostAvailable,
@@ -338,15 +350,33 @@ export function WebsiteForm({
           <label htmlFor="price" className={labelClass}>
             Price
           </label>
-          <input
-            id="price"
-            type="number"
-            min={0}
-            step="0.01"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className={inputClass}
-          />
+          <div className="flex gap-2">
+            <input
+              id="price"
+              type="number"
+              min={0}
+              step="0.01"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className={`${inputClass} min-w-0 flex-1`}
+            />
+            <select
+              id="price_currency"
+              aria-label="Price currency"
+              value={priceCurrency}
+              onChange={(e) => setPriceCurrency(e.target.value)}
+              className={`${inputClass} w-24 shrink-0`}
+            >
+              {currencies.length === 0 && (
+                <option value={priceCurrency}>{priceCurrency}</option>
+              )}
+              {currencies.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} ({c.symbol})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="space-y-1.5">
