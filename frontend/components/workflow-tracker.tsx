@@ -18,21 +18,24 @@ interface WorkflowTrackerProps {
  * Map a (possibly branch) workflow status onto the linear pipeline so the
  * stepper can decide which stages are done. Branch states anchor to the stage
  * they logically sit between:
- *  - rejected / advance_requested / approved → around Under Review
- *  - payment_verification                    → around Payment Sent
+ *  - rejected / advance_requested → around Website Review
+ *  - verification_failed          → around Verification
+ *  - payment_recheck              → around Payment Sent
  */
 function anchorIndex(status: string): number {
   const direct = WORKFLOW_PIPELINE.indexOf(status);
   if (direct !== -1) return direct;
 
   const reviewIdx = WORKFLOW_PIPELINE.indexOf("review_pending");
+  const verificationIdx = WORKFLOW_PIPELINE.indexOf("verification_pending");
   const paymentSentIdx = WORKFLOW_PIPELINE.indexOf("payment_sent");
   switch (status) {
     case "rejected":
     case "advance_requested":
-    case "approved":
       return reviewIdx;
-    case "payment_verification":
+    case "verification_failed":
+      return verificationIdx;
+    case "payment_recheck":
       return paymentSentIdx;
     default:
       return 0;
@@ -42,16 +45,17 @@ function anchorIndex(status: string): number {
 /** Distinct accent for each branch state's badge. */
 const BRANCH_BADGE_STYLES: Record<string, string> = {
   rejected: "bg-red-100 text-red-700 ring-red-200",
+  verification_failed: "bg-red-100 text-red-700 ring-red-200",
   advance_requested: "bg-amber-100 text-amber-800 ring-amber-200",
-  payment_verification: "bg-amber-100 text-amber-800 ring-amber-200",
+  payment_recheck: "bg-amber-100 text-amber-800 ring-amber-200",
 };
 
 /**
  * A clean navy-themed stage stepper for the guest-post project pipeline.
  * The current stage is brand-pink, completed stages are checked, and future
  * stages are muted. Horizontal from `md+`, a vertical stack on mobile. When the
- * post is in a branch state (rejected / advance requested / payment
- * verification) a distinct badge is shown above the track.
+ * post is in a branch state (rejected / verification failed / advance requested
+ * / payment recheck) a distinct badge is shown above the track.
  */
 export function WorkflowTracker({ status }: WorkflowTrackerProps) {
   const isBranch = WORKFLOW_BRANCH_STATES.includes(status);

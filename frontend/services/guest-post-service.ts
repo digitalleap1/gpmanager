@@ -92,27 +92,51 @@ export function removeGuestPost(id: string): Promise<void> {
  * Review workflow + stats
  * ------------------------------------------------------------------ */
 
-/** Submit a draft link for manager review (creator/assignee/managers). */
-export function submitForReview(id: string): Promise<GuestPostListItem> {
-  return api.post<GuestPostListItem>(`/guest-posts/${id}/submit-review`, {});
+/**
+ * Submit the ticket for website review, assigning a reviewer who becomes the
+ * new current assignee. Used both from `research` (assign reviewer) and
+ * `rejected` (re-assign reviewer).
+ */
+export function submitForReview(
+  id: string,
+  reviewerId?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/submit-review`, {
+    reviewer_id: reviewerId ?? null,
+  });
+}
+
+/** Body accepted by the website-review action. */
+export interface ReviewBody {
+  approve: boolean;
+  note?: string;
+  /**
+   * On approval, assign a content writer who becomes the new assignee. If
+   * omitted, the reviewer keeps the ticket.
+   */
+  content_writer_id?: string;
+  /** Approve but route to the advance-payment branch first. */
+  advance?: boolean;
 }
 
 /**
- * Approve or reject a submitted link (managers only).
+ * Approve or reject a submitted link (current reviewer or a manager).
  *
- * Pass `advance: true` alongside an approval to route the post to the
+ * On approval, optionally assign a content writer (`content_writer_id`) who
+ * becomes the new assignee, or pass `advance: true` to route the post to the
  * advance-payment branch instead of straight into content writing.
  */
 export function reviewGuestPost(
   id: string,
-  approve: boolean,
-  note?: string,
-  advance?: boolean,
+  body: ReviewBody,
 ): Promise<GuestPostListItem> {
   return api.post<GuestPostListItem>(`/guest-posts/${id}/review`, {
-    approve,
-    note: note ?? null,
-    ...(advance ? { advance: true } : {}),
+    approve: body.approve,
+    note: body.note ?? null,
+    ...(body.content_writer_id
+      ? { content_writer_id: body.content_writer_id }
+      : {}),
+    ...(body.advance ? { advance: true } : {}),
   });
 }
 
@@ -128,14 +152,27 @@ export function getGuestPostStats(): Promise<GuestPostStats> {
  * detail page reloads the full GP afterwards to refresh the stage history.
  * ------------------------------------------------------------------ */
 
+/** Body accepted by the approve-advance workflow action. */
+export interface ApproveAdvanceBody {
+  note?: string;
+  /** Optionally assign a content writer who becomes the new assignee. */
+  content_writer_id?: string;
+}
+
 /** Approve a pending advance-payment request (admin only). */
 export function approveAdvance(
   id: string,
-  note?: string,
+  body: ApproveAdvanceBody = {},
 ): Promise<GuestPostListItem> {
-  return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/approve-advance`, {
-    note: note ?? null,
-  });
+  return api.post<GuestPostListItem>(
+    `/guest-posts/${id}/workflow/approve-advance`,
+    {
+      note: body.note ?? null,
+      ...(body.content_writer_id
+        ? { content_writer_id: body.content_writer_id }
+        : {}),
+    },
+  );
 }
 
 /** Assign (or clear, with `null`) the content writer for a guest post. */
@@ -169,15 +206,52 @@ export function sendToClient(
   });
 }
 
-/** Mark the post published, recording the live URL. */
+/** Body accepted by the publish workflow action. */
+export interface PublishBody {
+  live_url: string;
+  note?: string;
+  /** Verifier who becomes the new assignee for the verification stage. */
+  verifier_id?: string;
+}
+
+/**
+ * Mark the post published, recording the live URL and (optionally) assigning a
+ * verifier who becomes the new current assignee. Also used to re-publish from
+ * the `verification_failed` branch.
+ */
 export function wfPublish(
   id: string,
-  liveUrl: string,
-  note?: string,
+  body: PublishBody,
 ): Promise<GuestPostListItem> {
   return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/publish`, {
-    live_url: liveUrl,
+    live_url: body.live_url,
+    note: body.note ?? null,
+    ...(body.verifier_id ? { verifier_id: body.verifier_id } : {}),
+  });
+}
+
+/** Approve or fail the live-link verification (current verifier or a manager). */
+export function verifyLink(
+  id: string,
+  approve: boolean,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/verify`, {
+    approve,
     note: note ?? null,
+  });
+}
+
+/**
+ * Reassign the ticket to anyone (managers only). Pass `null` to unassign the
+ * current holder.
+ */
+export function reassignTicket(
+  id: string,
+  assigneeId: string | null,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/reassign`, {
+    assignee_id: assigneeId,
   });
 }
 

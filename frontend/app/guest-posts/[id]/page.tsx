@@ -12,13 +12,14 @@ import {
 import { WorkflowTracker } from "@/components/workflow-tracker";
 import { useAuth } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api";
-import { workflowLabel } from "@/lib/gp-workflow";
+import { WORKFLOW_BRANCH_STATES, workflowLabel } from "@/lib/gp-workflow";
 import type {
   GuestPostDetail,
   GuestPostListItem,
   GuestPostStatus,
   StatusHistoryEntry,
   UserAdminRead,
+  UserRef,
 } from "@/lib/types";
 import { cn, formatCurrency, formatDate, relativeTime } from "@/lib/utils";
 import {
@@ -28,6 +29,7 @@ import {
   getGuestPost,
   paymentSent,
   publish,
+  reassignTicket,
   reopenPayment,
   requestPayment,
   reviewGuestPost,
@@ -35,6 +37,7 @@ import {
   setStatus,
   submitContent,
   submitForReview,
+  verifyLink,
   wfPublish,
 } from "@/services/guest-post-service";
 import { listUsers } from "@/services/user-service";
@@ -87,6 +90,9 @@ export default function GuestPostDetailPage({
     void load();
   }, [load]);
 
+  const isCurrentAssignee =
+    !!user && !!gp?.assigned_user && gp.assigned_user.id === user.id;
+
   return (
     <AppShell title={gp?.website_name ?? "Guest Post"}>
       {loading ? (
@@ -120,12 +126,15 @@ export default function GuestPostDetailPage({
           {/* Project workflow stepper */}
           <WorkflowTracker status={gp.workflow_status} />
 
-          {/* Workflow action card (state- + role-aware) */}
+          {/* Workflow action card (state- + role- + assignee-aware) */}
           <WorkflowActions
             guestPostId={id}
             workflowStatus={gp.workflow_status}
+            assignedUser={gp.assigned_user}
+            liveLink={gp.live_link}
             isAdmin={isAdmin}
             isManager={isManager}
+            isCurrentAssignee={isCurrentAssignee}
             reload={load}
           />
 
@@ -559,7 +568,7 @@ function StatusHistory({ entries }: { entries: StatusHistoryEntry[] }) {
 }
 
 /* ================================================================== *
- * Project workflow state machine
+ * Project workflow state machine (per-ticket reassignment model)
  * ================================================================== */
 
 /** Friendly message for an action failure (special-casing 403s). */
@@ -573,65 +582,306 @@ function actionError(e: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-/** Shared shape for an open inline form. */
-type OpenForm =
-  | { kind: "reject" }
-  | { kind: "publish" }
-  | { kind: "request_payment" }
-  | { kind: "note"; action: NoteAction }
-  | null;
-
-/** Workflow actions that take only an optional note. */
-type NoteAction =
-  | "submit_review"
+/**
+ * Which inline form (if any) an action opens. `note` forms only collect an
+ * optional note; the richer forms collect extra inputs (selects, live URL,
+ * payment details).
+ */
+type FormKind =
+  | "assign_reviewer"
   | "approve"
-  | "approve_advance_review"
+  | "reject"
   | "approve_advance"
   | "submit_content"
   | "send_client"
-  | "request_payment_plain"
+  | "publish"
+  | "verify_approve"
+  | "verify_fail"
+  | "request_payment"
   | "payment_sent"
   | "confirm_payment"
   | "reopen_payment";
 
+/** A single workflow action descriptor for the action card. */
+interface WorkflowAction {
+  id: string;
+  label: string;
+  form: FormKind;
+  variant?: "primary" | "danger" | "success";
+  icon?: React.ReactNode;
+}
+
+/** Inputs the action card may collect across its inline forms. */
+interface ActionContext {
+  isAdmin: boolean;
+  isManager: boolean;
+  isCurrentAssignee: boolean;
+}
+
 /**
- * State- and role-aware action card. Renders only the button(s) valid for the
- * current `workflow_status` and the user's role (per the workflow table).
- * Actions needing input open an inline form; the rest open a small optional-note
- * form. Every call reloads the GP so the stepper + history stay in sync.
+ * The available actions for a given workflow status + role + assignee, per the
+ * state-machine table. Returns an empty list when the user has nothing to do
+ * here.
+ *
+ * "current assignee" = the ticket's `assigned_user` is the signed-in user.
+ */
+function workflowActionsFor(
+  status: string,
+  ctx: ActionContext,
+): WorkflowAction[] {
+  const { isAdmin, isManager, isCurrentAssignee } = ctx;
+  // The current assignee can always act on their own stage; otherwise the
+  // listed role is required.
+  const assigneeOrManager = isCurrentAssignee || isManager;
+
+  switch (status) {
+    case "research":
+      // team lead / creator → assign a reviewer
+      if (!assigneeOrManager) return [];
+      return [
+        {
+          id: "assign_reviewer",
+          label: "Assign reviewer",
+          form: "assign_reviewer",
+        },
+      ];
+    case "review_pending":
+      // the current assignee (reviewer) OR a manager
+      if (!assigneeOrManager) return [];
+      return [
+        {
+          id: "approve",
+          label: "Approve",
+          form: "approve",
+          variant: "success",
+          icon: <Check className="h-4 w-4" />,
+        },
+        {
+          id: "approve_advance",
+          label: "Approve + needs advance payment",
+          form: "approve",
+        },
+        {
+          id: "reject",
+          label: "Reject",
+          form: "reject",
+          variant: "danger",
+          icon: <X className="h-4 w-4" />,
+        },
+      ];
+    case "rejected":
+      // team lead → re-assign a reviewer
+      if (!isManager) return [];
+      return [
+        {
+          id: "reassign_reviewer",
+          label: "Re-assign reviewer",
+          form: "assign_reviewer",
+        },
+      ];
+    case "advance_requested":
+      // admin → approve advance
+      if (!isAdmin) return [];
+      return [
+        {
+          id: "approve_advance_pay",
+          label: "Approve advance",
+          form: "approve_advance",
+          variant: "success",
+          icon: <Check className="h-4 w-4" />,
+        },
+      ];
+    case "content_writing":
+      // current assignee (writer) / manager → submit content
+      if (!assigneeOrManager) return [];
+      return [
+        {
+          id: "submit_content",
+          label: "Submit content",
+          form: "submit_content",
+        },
+      ];
+    case "content_ready":
+      // team lead → send to client
+      if (!isManager) return [];
+      return [
+        {
+          id: "send_client",
+          label: "Send to client",
+          form: "send_client",
+        },
+      ];
+    case "sent_to_client":
+      // team lead → mark published + assign verifier
+      if (!isManager) return [];
+      return [
+        {
+          id: "publish",
+          label: "Mark published + assign verifier",
+          form: "publish",
+          variant: "success",
+        },
+      ];
+    case "verification_pending":
+      // the current assignee (verifier) OR a manager
+      if (!assigneeOrManager) return [];
+      return [
+        {
+          id: "verify_approve",
+          label: "Verify – Approve",
+          form: "verify_approve",
+          variant: "success",
+          icon: <Check className="h-4 w-4" />,
+        },
+        {
+          id: "verify_fail",
+          label: "Verify – Fail",
+          form: "verify_fail",
+          variant: "danger",
+          icon: <X className="h-4 w-4" />,
+        },
+      ];
+    case "verified":
+      // team lead → request payment
+      if (!isManager) return [];
+      return [
+        {
+          id: "request_payment",
+          label: "Request payment",
+          form: "request_payment",
+        },
+      ];
+    case "verification_failed":
+      // team lead → re-publish / re-assign verifier
+      if (!isManager) return [];
+      return [
+        {
+          id: "republish",
+          label: "Re-publish / re-assign verifier",
+          form: "publish",
+          variant: "success",
+        },
+      ];
+    case "payment_requested":
+      // admin → mark payment sent
+      if (!isAdmin) return [];
+      return [
+        {
+          id: "payment_sent",
+          label: "Mark payment sent",
+          form: "payment_sent",
+        },
+      ];
+    case "payment_sent":
+      // team lead → confirm payment / reopen (recheck)
+      if (!isManager) return [];
+      return [
+        {
+          id: "confirm_payment",
+          label: "Confirm payment",
+          form: "confirm_payment",
+          variant: "success",
+          icon: <Check className="h-4 w-4" />,
+        },
+        {
+          id: "reopen_payment",
+          label: "Reopen (recheck)",
+          form: "reopen_payment",
+          variant: "danger",
+        },
+      ];
+    case "payment_recheck":
+      // admin → mark payment sent
+      if (!isAdmin) return [];
+      return [
+        {
+          id: "payment_sent_recheck",
+          label: "Mark payment sent",
+          form: "payment_sent",
+        },
+      ];
+    case "completed":
+    default:
+      return [];
+  }
+}
+
+/**
+ * State-, role- and assignee-aware action card. Renders only the button(s)
+ * valid for the current `workflow_status` and the user, per the workflow table.
+ * Each button opens an inline form (note and/or assignee select / live URL /
+ * payment fields). A manager can also reassign the ticket from any non-terminal
+ * state. Every call reloads the GP so the stepper + history stay in sync.
  */
 function WorkflowActions({
   guestPostId,
   workflowStatus,
+  assignedUser,
+  liveLink,
   isAdmin,
   isManager,
+  isCurrentAssignee,
   reload,
 }: {
   guestPostId: string;
   workflowStatus: string;
+  assignedUser: UserRef | null;
+  liveLink: string | null;
   isAdmin: boolean;
   isManager: boolean;
+  isCurrentAssignee: boolean;
   reload: () => Promise<void>;
 }) {
-  const [open, setOpen] = useState<OpenForm>(null);
+  const [open, setOpen] = useState<{ form: FormKind; advance: boolean } | null>(
+    null,
+  );
   const [note, setNote] = useState("");
   const [liveUrl, setLiveUrl] = useState("");
+  const [assigneeId, setAssigneeId] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [paymentType, setPaymentType] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Users for the assignee pickers (reviewer / writer / verifier / reassign).
+  const [users, setUsers] = useState<UserAdminRead[]>([]);
+  const [usersError, setUsersError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    listUsers()
+      .then((list) => {
+        if (active) setUsers(list);
+      })
+      .catch((e) => {
+        if (active) setUsersError(actionError(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Reset transient form state whenever the post moves to a new stage.
   useEffect(() => {
     setOpen(null);
     setNote("");
     setLiveUrl("");
+    setAssigneeId("");
     setAmount("");
     setCurrency("USD");
     setPaymentType("");
     setErr(null);
   }, [workflowStatus]);
+
+  function resetInputs() {
+    setNote("");
+    setLiveUrl("");
+    setAssigneeId("");
+    setAmount("");
+    setPaymentType("");
+    setErr(null);
+  }
 
   async function run(fn: () => Promise<GuestPostListItem>) {
     setErr(null);
@@ -639,10 +889,7 @@ function WorkflowActions({
     try {
       await fn();
       setOpen(null);
-      setNote("");
-      setLiveUrl("");
-      setAmount("");
-      setPaymentType("");
+      resetInputs();
       await reload();
     } catch (e) {
       setErr(actionError(e));
@@ -652,194 +899,478 @@ function WorkflowActions({
   }
 
   const trimmedNote = () => note.trim() || undefined;
+  const selectedAssignee = () => assigneeId || undefined;
 
-  function runNote(action: NoteAction) {
-    const n = trimmedNote();
-    switch (action) {
-      case "submit_review":
-        return run(() => submitForReview(guestPostId));
+  function submit() {
+    if (!open) return;
+    switch (open.form) {
+      case "assign_reviewer":
+        if (assigneeId === "") {
+          setErr("Select a reviewer to assign.");
+          return;
+        }
+        void run(() => submitForReview(guestPostId, assigneeId));
+        return;
       case "approve":
-        return run(() => reviewGuestPost(guestPostId, true, n));
-      case "approve_advance_review":
-        return run(() => reviewGuestPost(guestPostId, true, n, true));
+        void run(() =>
+          reviewGuestPost(guestPostId, {
+            approve: true,
+            note: trimmedNote(),
+            advance: open.advance || undefined,
+            content_writer_id: open.advance ? undefined : selectedAssignee(),
+          }),
+        );
+        return;
+      case "reject":
+        if (note.trim() === "") {
+          setErr("A reason is required to reject this submission.");
+          return;
+        }
+        void run(() =>
+          reviewGuestPost(guestPostId, {
+            approve: false,
+            note: note.trim(),
+          }),
+        );
+        return;
       case "approve_advance":
-        return run(() => approveAdvance(guestPostId, n));
+        void run(() =>
+          approveAdvance(guestPostId, {
+            note: trimmedNote(),
+            content_writer_id: selectedAssignee(),
+          }),
+        );
+        return;
       case "submit_content":
-        return run(() => submitContent(guestPostId, n));
+        void run(() => submitContent(guestPostId, trimmedNote()));
+        return;
       case "send_client":
-        return run(() => sendToClient(guestPostId, n));
+        void run(() => sendToClient(guestPostId, trimmedNote()));
+        return;
+      case "publish":
+        if (liveUrl.trim() === "") {
+          setErr("A live URL is required to mark this published.");
+          return;
+        }
+        void run(() =>
+          wfPublish(guestPostId, {
+            live_url: liveUrl.trim(),
+            note: trimmedNote(),
+            verifier_id: selectedAssignee(),
+          }),
+        );
+        return;
+      case "verify_approve":
+        void run(() => verifyLink(guestPostId, true, trimmedNote()));
+        return;
+      case "verify_fail":
+        if (note.trim() === "") {
+          setErr("A reason is required to fail verification.");
+          return;
+        }
+        void run(() => verifyLink(guestPostId, false, note.trim()));
+        return;
+      case "request_payment": {
+        const parsedAmount =
+          amount.trim() === "" ? undefined : Number(amount);
+        if (parsedAmount !== undefined && Number.isNaN(parsedAmount)) {
+          setErr("Amount must be a number.");
+          return;
+        }
+        void run(() =>
+          requestPayment(guestPostId, {
+            amount: parsedAmount,
+            currency: currency.trim() || undefined,
+            payment_type: paymentType.trim() || undefined,
+            note: trimmedNote(),
+          }),
+        );
+        return;
+      }
       case "payment_sent":
-        return run(() => paymentSent(guestPostId, n));
+        void run(() => paymentSent(guestPostId, trimmedNote()));
+        return;
       case "confirm_payment":
-        return run(() => confirmPayment(guestPostId, n));
+        void run(() => confirmPayment(guestPostId, trimmedNote()));
+        return;
       case "reopen_payment":
-        return run(() => reopenPayment(guestPostId, n));
+        void run(() => reopenPayment(guestPostId, trimmedNote()));
+        return;
       default:
-        return Promise.resolve();
+        return;
     }
-  }
-
-  function handleReject() {
-    if (note.trim() === "") {
-      setErr("A reason is required to reject this submission.");
-      return;
-    }
-    void run(() => reviewGuestPost(guestPostId, false, note.trim()));
-  }
-
-  function handlePublish() {
-    if (liveUrl.trim() === "") {
-      setErr("A live URL is required to mark this published.");
-      return;
-    }
-    void run(() => wfPublish(guestPostId, liveUrl.trim(), trimmedNote()));
-  }
-
-  function handleRequestPayment() {
-    const parsedAmount =
-      amount.trim() === "" ? undefined : Number(amount);
-    if (parsedAmount !== undefined && Number.isNaN(parsedAmount)) {
-      setErr("Amount must be a number.");
-      return;
-    }
-    void run(() =>
-      requestPayment(guestPostId, {
-        amount: parsedAmount,
-        currency: currency.trim() || undefined,
-        payment_type: paymentType.trim() || undefined,
-        note: trimmedNote(),
-      }),
-    );
   }
 
   // Build the available primary actions for this state + role.
-  const actions = workflowActionsFor(workflowStatus, { isAdmin, isManager });
+  const actions = workflowActionsFor(workflowStatus, {
+    isAdmin,
+    isManager,
+    isCurrentAssignee,
+  });
 
-  if (actions.length === 0) {
-    return (
-      <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-        <h2 className="text-sm font-semibold text-[#1A1F4D]">Workflow</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          No action needed from you at this stage.
-        </p>
-      </section>
-    );
-  }
+  const isTerminal = workflowStatus === "completed";
+  const isBranch = WORKFLOW_BRANCH_STATES.includes(workflowStatus);
+  const canReassign = isManager && !isTerminal;
+  const assigneeName = assignedUser?.full_name ?? "Unassigned";
+
+  // When publishing from the verification_failed branch, pre-fill the live URL.
+  useEffect(() => {
+    if (
+      open?.form === "publish" &&
+      workflowStatus === "verification_failed" &&
+      liveUrl === "" &&
+      liveLink
+    ) {
+      setLiveUrl(liveLink);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open?.form, workflowStatus]);
 
   return (
     <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-      <h2 className="text-sm font-semibold text-[#1A1F4D]">Workflow</h2>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Current stage:{" "}
-        <span className="font-medium">{workflowLabel(workflowStatus)}</span>
-      </p>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {actions.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setErr(null);
-              // Reset shared inputs so text doesn't leak between actions.
-              setNote("");
-              setLiveUrl("");
-              setAmount("");
-              setPaymentType("");
-              if (a.form) {
-                // Toggle the form open/closed.
-                setOpen((prev) =>
-                  prev && formKey(prev) === a.form ? null : openFor(a),
-                );
-              } else if (a.note) {
-                setOpen((prev) =>
-                  prev && prev.kind === "note" && prev.action === a.note
-                    ? null
-                    : { kind: "note", action: a.note! },
-                );
-              }
-            }}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-[#1A1F4D]">Workflow</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Current stage:{" "}
+            <span className="font-medium">
+              {workflowLabel(workflowStatus)}
+            </span>
+          </p>
+        </div>
+        <div className="rounded-lg bg-muted/50 px-3 py-2 text-right">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Current assignee
+          </p>
+          <p
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50",
-              a.variant === "danger"
-                ? "bg-red-600 text-white hover:bg-red-700"
-                : a.variant === "success"
-                  ? "bg-green-600 text-white hover:bg-green-700"
-                  : "bg-primary text-primary-foreground hover:opacity-90",
+              "text-sm font-semibold",
+              assignedUser ? "text-[#1A1F4D]" : "text-muted-foreground",
             )}
           >
-            {a.icon}
-            {a.label}
-          </button>
-        ))}
+            {assigneeName}
+          </p>
+        </div>
       </div>
 
-      {/* Inline forms */}
-      {open?.kind === "reject" && (
-        <div className="mt-4 space-y-2 rounded-lg border border-border bg-background/40 p-4">
-          <label htmlFor="wf_reject_note" className="text-sm font-medium">
-            Rejection reason <span className="text-destructive">*</span>
-          </label>
-          <textarea
-            id="wf_reject_note"
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Explain what needs fixing…"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleReject}
-              disabled={busy || note.trim() === ""}
-              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-            >
-              {busy ? "Rejecting…" : "Confirm reject"}
-            </button>
-          </div>
+      {usersError && (
+        <p
+          role="alert"
+          className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {usersError}
+        </p>
+      )}
+
+      {actions.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No action needed from you at this stage.
+        </p>
+      ) : (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {actions.map((a) => {
+            const advance = a.id === "approve_advance";
+            const isActive =
+              open?.form === a.form && open.advance === advance;
+            return (
+              <button
+                key={a.id}
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  resetInputs();
+                  setOpen((prev) =>
+                    prev && prev.form === a.form && prev.advance === advance
+                      ? null
+                      : { form: a.form, advance },
+                  );
+                }}
+                aria-expanded={isActive}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50",
+                  a.variant === "danger"
+                    ? "bg-red-600 text-white hover:bg-red-700"
+                    : a.variant === "success"
+                      ? "bg-green-600 text-white hover:bg-green-700"
+                      : "bg-primary text-primary-foreground hover:opacity-90",
+                )}
+              >
+                {a.icon}
+                {a.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {open?.kind === "publish" && (
-        <div className="mt-4 space-y-2 rounded-lg border border-border bg-background/40 p-4">
-          <label htmlFor="wf_live_url" className="text-sm font-medium">
-            Live URL <span className="text-destructive">*</span>
-          </label>
-          <input
-            id="wf_live_url"
-            type="url"
-            value={liveUrl}
-            onChange={(e) => setLiveUrl(e.target.value)}
-            placeholder="https://example.com/article"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-          <label htmlFor="wf_publish_note" className="text-sm font-medium">
-            Note (optional)
-          </label>
-          <textarea
-            id="wf_publish_note"
-            rows={2}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handlePublish}
-              disabled={busy || liveUrl.trim() === ""}
-              className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              {busy ? "Saving…" : "Mark published"}
-            </button>
-          </div>
-        </div>
+      {/* Inline form for the open action. */}
+      {open && (
+        <ActionForm
+          open={open}
+          users={users}
+          note={note}
+          setNote={setNote}
+          liveUrl={liveUrl}
+          setLiveUrl={setLiveUrl}
+          assigneeId={assigneeId}
+          setAssigneeId={setAssigneeId}
+          amount={amount}
+          setAmount={setAmount}
+          currency={currency}
+          setCurrency={setCurrency}
+          paymentType={paymentType}
+          setPaymentType={setPaymentType}
+          busy={busy}
+          onSubmit={submit}
+        />
       )}
 
-      {open?.kind === "request_payment" && (
-        <div className="mt-4 space-y-3 rounded-lg border border-border bg-background/40 p-4">
+      {err && (
+        <p
+          role="alert"
+          className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {err}
+        </p>
+      )}
+
+      {/* Reassign control — managers, any non-terminal state. */}
+      {canReassign && (
+        <ReassignTicket
+          guestPostId={guestPostId}
+          users={users}
+          currentAssigneeId={assignedUser?.id ?? null}
+          isBranch={isBranch}
+          reload={reload}
+        />
+      )}
+    </section>
+  );
+}
+
+/** Brand-styled assignee `<select>` used across the workflow forms. */
+function AssigneeSelect({
+  id,
+  label,
+  value,
+  users,
+  onChange,
+  disabled,
+  unassignedLabel = "— Keep current assignee —",
+}: {
+  id: string;
+  label: string;
+  value: string;
+  users: UserAdminRead[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  unassignedLabel?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm font-medium">
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+      >
+        <option value="">{unassignedLabel}</option>
+        {users.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.full_name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/** The inline form body for whichever workflow action is currently open. */
+function ActionForm({
+  open,
+  users,
+  note,
+  setNote,
+  liveUrl,
+  setLiveUrl,
+  assigneeId,
+  setAssigneeId,
+  amount,
+  setAmount,
+  currency,
+  setCurrency,
+  paymentType,
+  setPaymentType,
+  busy,
+  onSubmit,
+}: {
+  open: { form: FormKind; advance: boolean };
+  users: UserAdminRead[];
+  note: string;
+  setNote: (v: string) => void;
+  liveUrl: string;
+  setLiveUrl: (v: string) => void;
+  assigneeId: string;
+  setAssigneeId: (v: string) => void;
+  amount: string;
+  setAmount: (v: string) => void;
+  currency: string;
+  setCurrency: (v: string) => void;
+  paymentType: string;
+  setPaymentType: (v: string) => void;
+  busy: boolean;
+  onSubmit: () => void;
+}) {
+  const { form, advance } = open;
+
+  const noteField = (opts?: { required?: boolean; label?: string }) => (
+    <div className="space-y-1.5">
+      <label htmlFor="wf_note" className="text-sm font-medium">
+        {opts?.label ?? "Note"}
+        {opts?.required ? (
+          <span className="text-destructive"> *</span>
+        ) : (
+          <span className="text-muted-foreground"> (optional)</span>
+        )}
+      </label>
+      <textarea
+        id="wf_note"
+        rows={opts?.required ? 3 : 2}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Add a comment for this stage…"
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+      />
+    </div>
+  );
+
+  let body: React.ReactNode = null;
+  let submitLabel = "Confirm";
+  let submitVariant: "primary" | "danger" | "success" = "primary";
+
+  switch (form) {
+    case "assign_reviewer":
+      submitLabel = "Assign reviewer";
+      body = (
+        <>
+          <AssigneeSelect
+            id="wf_reviewer"
+            label="Reviewer"
+            value={assigneeId}
+            users={users}
+            disabled={busy}
+            onChange={setAssigneeId}
+            unassignedLabel="— Select a reviewer —"
+          />
+          {noteField()}
+        </>
+      );
+      break;
+    case "approve":
+      submitVariant = "success";
+      submitLabel = advance ? "Approve + request advance" : "Approve";
+      body = (
+        <>
+          {!advance && (
+            <AssigneeSelect
+              id="wf_writer"
+              label="Assign content writer"
+              value={assigneeId}
+              users={users}
+              disabled={busy}
+              onChange={setAssigneeId}
+              unassignedLabel="— Keep reviewer (no writer) —"
+            />
+          )}
+          {advance && (
+            <p className="text-xs text-muted-foreground">
+              This will request an advance payment before content writing.
+            </p>
+          )}
+          {noteField()}
+        </>
+      );
+      break;
+    case "reject":
+      submitVariant = "danger";
+      submitLabel = "Confirm reject";
+      body = noteField({ required: true, label: "Rejection reason" });
+      break;
+    case "approve_advance":
+      submitVariant = "success";
+      submitLabel = "Approve advance";
+      body = (
+        <>
+          <AssigneeSelect
+            id="wf_adv_writer"
+            label="Assign content writer"
+            value={assigneeId}
+            users={users}
+            disabled={busy}
+            onChange={setAssigneeId}
+            unassignedLabel="— Keep current assignee —"
+          />
+          {noteField()}
+        </>
+      );
+      break;
+    case "submit_content":
+      submitLabel = "Submit content";
+      body = noteField();
+      break;
+    case "send_client":
+      submitLabel = "Send to client";
+      body = noteField();
+      break;
+    case "publish":
+      submitVariant = "success";
+      submitLabel = "Mark published";
+      body = (
+        <>
+          <div className="space-y-1.5">
+            <label htmlFor="wf_live_url" className="text-sm font-medium">
+              Live URL <span className="text-destructive">*</span>
+            </label>
+            <input
+              id="wf_live_url"
+              type="url"
+              value={liveUrl}
+              onChange={(e) => setLiveUrl(e.target.value)}
+              placeholder="https://example.com/article"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <AssigneeSelect
+            id="wf_verifier"
+            label="Assign verifier"
+            value={assigneeId}
+            users={users}
+            disabled={busy}
+            onChange={setAssigneeId}
+            unassignedLabel="— Keep current assignee —"
+          />
+          {noteField()}
+        </>
+      );
+      break;
+    case "verify_approve":
+      submitVariant = "success";
+      submitLabel = "Confirm verified";
+      body = noteField();
+      break;
+    case "verify_fail":
+      submitVariant = "danger";
+      submitLabel = "Confirm fail";
+      body = noteField({ required: true, label: "Failure reason" });
+      break;
+    case "request_payment":
+      submitLabel = "Request payment";
+      body = (
+        <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <label htmlFor="wf_amount" className="text-sm font-medium">
@@ -883,241 +1414,152 @@ function WorkflowActions({
               />
             </div>
           </div>
-          <div className="space-y-1.5">
-            <label htmlFor="wf_rp_note" className="text-sm font-medium">
-              Note (optional)
-            </label>
-            <textarea
-              id="wf_rp_note"
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleRequestPayment}
-              disabled={busy}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-            >
-              {busy ? "Saving…" : "Request payment"}
-            </button>
-          </div>
-        </div>
-      )}
+          {noteField()}
+        </>
+      );
+      break;
+    case "payment_sent":
+      submitLabel = "Mark payment sent";
+      body = noteField();
+      break;
+    case "confirm_payment":
+      submitVariant = "success";
+      submitLabel = "Confirm payment";
+      body = noteField();
+      break;
+    case "reopen_payment":
+      submitVariant = "danger";
+      submitLabel = "Reopen (recheck)";
+      body = noteField();
+      break;
+    default:
+      body = null;
+  }
 
-      {open?.kind === "note" && (
-        <div className="mt-4 space-y-2 rounded-lg border border-border bg-background/40 p-4">
-          <label htmlFor="wf_note" className="text-sm font-medium">
-            Note (optional)
-          </label>
-          <textarea
-            id="wf_note"
-            rows={2}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Add a comment for this stage…"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                if (open.kind === "note") void runNote(open.action);
-              }}
-              disabled={busy}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-            >
-              {busy ? "Saving…" : "Confirm"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {err && (
-        <p
-          role="alert"
-          className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+  return (
+    <div className="mt-4 space-y-3 rounded-lg border border-border bg-background/40 p-4">
+      {body}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={busy}
+          className={cn(
+            "rounded-md px-4 py-2 text-sm font-medium text-white disabled:opacity-50",
+            submitVariant === "danger"
+              ? "bg-red-600 hover:bg-red-700"
+              : submitVariant === "success"
+                ? "bg-green-600 hover:bg-green-700"
+                : "bg-primary text-primary-foreground hover:opacity-90",
+          )}
         >
-          {err}
-        </p>
-      )}
-    </section>
+          {busy ? "Saving…" : submitLabel}
+        </button>
+      </div>
+    </div>
   );
 }
 
-/** A single workflow action descriptor for the action card. */
-interface WorkflowAction {
-  id: string;
-  label: string;
-  variant?: "primary" | "danger" | "success";
-  icon?: React.ReactNode;
-  /** Opens a dedicated inline form. */
-  form?: "reject" | "publish" | "request_payment";
-  /** Opens the shared optional-note form, then runs this note action. */
-  note?: NoteAction;
-}
-
-/** Map an open form back to its key for toggle comparison. */
-function formKey(open: NonNullable<OpenForm>): string {
-  return open.kind;
-}
-
-/** Build the OpenForm matching an action's `form` field. */
-function openFor(a: WorkflowAction): OpenForm {
-  switch (a.form) {
-    case "reject":
-      return { kind: "reject" };
-    case "publish":
-      return { kind: "publish" };
-    case "request_payment":
-      return { kind: "request_payment" };
-    default:
-      return null;
-  }
-}
-
 /**
- * The available actions for a given workflow status + role, per the state
- * machine table. Returns an empty list when the user has nothing to do here.
+ * Small "Reassign ticket" control: managers can hand the ticket to anyone (or
+ * unassign) from any non-terminal state.
  */
-function workflowActionsFor(
-  status: string,
-  role: { isAdmin: boolean; isManager: boolean },
-): WorkflowAction[] {
-  const { isAdmin, isManager } = role;
+function ReassignTicket({
+  guestPostId,
+  users,
+  currentAssigneeId,
+  isBranch,
+  reload,
+}: {
+  guestPostId: string;
+  users: UserAdminRead[];
+  currentAssigneeId: string | null;
+  isBranch: boolean;
+  reload: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string>(currentAssigneeId ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  switch (status) {
-    case "research":
-      // member or manager
-      return [
-        {
-          id: "submit_review",
-          label: "Submit for review",
-          note: "submit_review",
-        },
-      ];
-    case "review_pending":
-      if (!isManager) return [];
-      return [
-        {
-          id: "approve",
-          label: "Approve",
-          variant: "success",
-          icon: <Check className="h-4 w-4" />,
-          note: "approve",
-        },
-        {
-          id: "approve_advance",
-          label: "Approve + needs advance payment",
-          note: "approve_advance_review",
-        },
-        {
-          id: "reject",
-          label: "Reject",
-          variant: "danger",
-          icon: <X className="h-4 w-4" />,
-          form: "reject",
-        },
-      ];
-    case "rejected":
-      // member or manager
-      return [
-        {
-          id: "resubmit",
-          label: "Re-submit for review",
-          note: "submit_review",
-        },
-      ];
-    case "advance_requested":
-      if (!isAdmin) return [];
-      return [
-        {
-          id: "approve_advance",
-          label: "Approve advance",
-          variant: "success",
-          icon: <Check className="h-4 w-4" />,
-          note: "approve_advance",
-        },
-      ];
-    case "content_writing":
-      // writer / member / manager
-      return [
-        {
-          id: "submit_content",
-          label: "Submit content",
-          note: "submit_content",
-        },
-      ];
-    case "content_ready":
-      if (!isManager) return [];
-      return [
-        {
-          id: "send_client",
-          label: "Send to client",
-          note: "send_client",
-        },
-      ];
-    case "sent_to_client":
-      if (!isManager) return [];
-      return [
-        {
-          id: "publish",
-          label: "Mark published (live URL)",
-          variant: "success",
-          form: "publish",
-        },
-      ];
-    case "published":
-      if (!isManager) return [];
-      return [
-        {
-          id: "request_payment",
-          label: "Request payment",
-          form: "request_payment",
-        },
-      ];
-    case "payment_requested":
-      if (!isAdmin) return [];
-      return [
-        {
-          id: "payment_sent",
-          label: "Mark payment sent",
-          note: "payment_sent",
-        },
-      ];
-    case "payment_sent":
-      if (!isManager) return [];
-      return [
-        {
-          id: "confirm_payment",
-          label: "Confirm payment",
-          variant: "success",
-          icon: <Check className="h-4 w-4" />,
-          note: "confirm_payment",
-        },
-        {
-          id: "reopen_payment",
-          label: "Reopen (not received)",
-          variant: "danger",
-          note: "reopen_payment",
-        },
-      ];
-    case "payment_verification":
-      if (!isAdmin) return [];
-      return [
-        {
-          id: "payment_sent",
-          label: "Mark payment sent",
-          note: "payment_sent",
-        },
-      ];
-    case "completed":
-    default:
-      return [];
+  useEffect(() => {
+    setSelected(currentAssigneeId ?? "");
+  }, [currentAssigneeId]);
+
+  async function apply() {
+    setErr(null);
+    setBusy(true);
+    try {
+      await reassignTicket(guestPostId, selected || null);
+      setOpen(false);
+      await reload();
+    } catch (e) {
+      setErr(actionError(e));
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const unchanged = (selected || null) === (currentAssigneeId ?? null);
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {isBranch ? "Reassign ticket" : "Reassign ticket to someone else"}
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Reassign ticket
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <AssigneeSelect
+              id="wf_reassign"
+              label="New assignee"
+              value={selected}
+              users={users}
+              disabled={busy}
+              onChange={setSelected}
+              unassignedLabel="— Unassign —"
+            />
+            <button
+              type="button"
+              onClick={() => void apply()}
+              disabled={busy || unchanged}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? "Saving…" : "Reassign"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setSelected(currentAssigneeId ?? "");
+                setErr(null);
+              }}
+              disabled={busy}
+              className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+          {err && (
+            <p
+              role="alert"
+              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {err}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ */

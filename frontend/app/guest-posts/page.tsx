@@ -192,7 +192,7 @@ export default function GuestPostLinksPage() {
     setActionError(null);
     setBusyId(gp.id);
     try {
-      await reviewGuestPost(gp.id, true);
+      await reviewGuestPost(gp.id, { approve: true });
       await refresh();
     } catch (err) {
       setActionError(errMsg(err, "Unable to approve this link."));
@@ -205,7 +205,10 @@ export default function GuestPostLinksPage() {
     setActionError(null);
     setBusyId(gp.id);
     try {
-      await reviewGuestPost(gp.id, false, note.trim() || undefined);
+      await reviewGuestPost(gp.id, {
+        approve: false,
+        note: note.trim() || undefined,
+      });
       setRejecting(null);
       await refresh();
     } catch (err) {

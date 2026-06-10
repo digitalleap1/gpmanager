@@ -5,23 +5,28 @@
  * than the legacy outreach `status`). These labels + the linear pipeline order
  * are the single source of truth used by both the stage tracker and the
  * stage-history list — never duplicate the labels in a component.
+ *
+ * The workflow is a per-ticket reassignment model: the guest post is a "ticket"
+ * whose current assignee (`assigned_user`) flows between people as it moves
+ * through the stages below.
  */
 
 /** Human-friendly label for every known workflow status. */
 export const WORKFLOW_LABELS: Record<string, string> = {
   research: "Research",
-  review_pending: "Under Review",
-  rejected: "Rejected",
-  advance_requested: "Advance Payment Requested",
-  approved: "Approved",
-  content_writing: "Content Writing",
+  review_pending: "Website Review Pending",
+  rejected: "Website Rejected",
+  content_writing: "Content Required",
   content_ready: "Content Ready",
   sent_to_client: "Sent to Client",
-  published: "Published / Live Link Received",
+  verification_pending: "Verification Pending",
+  verified: "Verified — Ready for Payment",
+  verification_failed: "Verification Failed",
+  advance_requested: "Advance Payment Requested",
   payment_requested: "Payment Requested",
   payment_sent: "Payment Sent",
-  payment_verification: "Payment Verification Pending",
-  completed: "Completed",
+  payment_recheck: "Payment Recheck Required",
+  completed: "Project Completed",
 };
 
 /**
@@ -37,8 +42,9 @@ export function workflowLabel(status: string): string {
 
 /**
  * The happy-path pipeline rendered by the stepper, in order. Branch states
- * (`rejected`, `advance_requested`, `payment_verification`, `approved`) are not
- * part of the linear track — they're surfaced as a badge by the tracker.
+ * (`rejected`, `verification_failed`, `advance_requested`, `payment_recheck`)
+ * are not part of the linear track — they're surfaced as a badge by the
+ * tracker.
  */
 export const WORKFLOW_PIPELINE: readonly string[] = [
   "research",
@@ -46,7 +52,8 @@ export const WORKFLOW_PIPELINE: readonly string[] = [
   "content_writing",
   "content_ready",
   "sent_to_client",
-  "published",
+  "verification_pending",
+  "verified",
   "payment_requested",
   "payment_sent",
   "completed",
@@ -55,18 +62,20 @@ export const WORKFLOW_PIPELINE: readonly string[] = [
 /** Branch states that sit off the linear pipeline. */
 export const WORKFLOW_BRANCH_STATES: readonly string[] = [
   "rejected",
+  "verification_failed",
   "advance_requested",
-  "payment_verification",
+  "payment_recheck",
 ];
 
 /** Short labels used in the compact stepper (full labels can be long). */
 export const WORKFLOW_PIPELINE_SHORT: Record<string, string> = {
   research: "Research",
-  review_pending: "Under Review",
-  content_writing: "Content Writing",
+  review_pending: "Website Review",
+  content_writing: "Content Required",
   content_ready: "Content Ready",
   sent_to_client: "Sent to Client",
-  published: "Published",
+  verification_pending: "Verification",
+  verified: "Verified",
   payment_requested: "Payment Requested",
   payment_sent: "Payment Sent",
   completed: "Completed",
