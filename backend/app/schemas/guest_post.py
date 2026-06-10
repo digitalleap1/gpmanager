@@ -184,12 +184,28 @@ class GuestPostDetail(GuestPostListItem):
         )
 
 
+class WorkflowAssignReview(BaseModel):
+    """Lead assigns the website review to a reviewer (Step 2)."""
+
+    reviewer_id: uuid.UUID | None = None
+
+
 class ReviewDecision(BaseModel):
     approve: bool
     note: str | None = Field(default=None, max_length=255)
     # When approving a site that needs paying before publish, route via the
     # advance-payment branch instead of straight to content writing.
     advance: bool = False
+    # On approve, the reviewer may assign the content writing to someone (else
+    # they keep it themselves).
+    content_writer_id: uuid.UUID | None = None
+
+
+class WorkflowVerify(BaseModel):
+    """Reviewer verifies the live link (Step 7)."""
+
+    approve: bool
+    note: str | None = Field(default=None, max_length=500)
 
 
 class WorkflowNote(BaseModel):
@@ -198,9 +214,16 @@ class WorkflowNote(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class WorkflowApproveAdvance(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+    content_writer_id: uuid.UUID | None = None
+
+
 class WorkflowPublish(BaseModel):
     live_url: str = Field(min_length=1, max_length=700)
     note: str | None = Field(default=None, max_length=500)
+    # Lead assigns a verifier to check the live link (Step 6).
+    verifier_id: uuid.UUID | None = None
 
 
 class WorkflowPaymentRequest(BaseModel):
@@ -212,6 +235,10 @@ class WorkflowPaymentRequest(BaseModel):
 
 class WorkflowAssignWriter(BaseModel):
     writer_id: uuid.UUID | None = None
+
+
+class WorkflowReassign(BaseModel):
+    assignee_id: uuid.UUID | None = None
 
 
 class NamedCount(BaseModel):

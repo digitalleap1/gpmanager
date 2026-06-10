@@ -18,10 +18,14 @@ from app.schemas.guest_post import (
     PublishRequest,
     ReviewDecision,
     StatusChange,
+    WorkflowApproveAdvance,
+    WorkflowAssignReview,
     WorkflowAssignWriter,
     WorkflowNote,
     WorkflowPaymentRequest,
     WorkflowPublish,
+    WorkflowReassign,
+    WorkflowVerify,
 )
 from app.services.gp_workflow import GuestPostWorkflowService
 from app.services.guest_post import GuestPostService
@@ -81,8 +85,13 @@ def get_guest_post(gp_id: uuid.UUID, user: CurrentUser, db: DbSession) -> GuestP
 
 
 @router.post("/{gp_id}/submit-review", response_model=GuestPostListItem)
-def submit_for_review(gp_id: uuid.UUID, user: CurrentUser, db: DbSession) -> GuestPostListItem:
-    return GuestPostListItem.from_gp(GuestPostWorkflowService(db, user).submit_for_review(gp_id))
+def submit_for_review(
+    gp_id: uuid.UUID, user: CurrentUser, db: DbSession,
+    body: WorkflowAssignReview = WorkflowAssignReview(),
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(
+        GuestPostWorkflowService(db, user).submit_for_review(gp_id, body.reviewer_id)
+    )
 
 
 @router.post("/{gp_id}/review", response_model=GuestPostListItem)
@@ -90,7 +99,9 @@ def review_guest_post(
     gp_id: uuid.UUID, body: ReviewDecision, user: CurrentUser, db: DbSession
 ) -> GuestPostListItem:
     return GuestPostListItem.from_gp(
-        GuestPostWorkflowService(db, user).review(gp_id, body.approve, body.note, body.advance)
+        GuestPostWorkflowService(db, user).review(
+            gp_id, body.approve, body.note, body.advance, body.content_writer_id
+        )
     )
 
 
@@ -124,7 +135,23 @@ def wf_send_to_client(
 def wf_publish(
     gp_id: uuid.UUID, body: WorkflowPublish, user: CurrentUser, db: DbSession
 ) -> GuestPostListItem:
-    return GuestPostListItem.from_gp(_wf(db, user).mark_published(gp_id, body.live_url, body.note))
+    return GuestPostListItem.from_gp(
+        _wf(db, user).mark_published(gp_id, body.live_url, body.note, body.verifier_id)
+    )
+
+
+@router.post("/{gp_id}/workflow/verify", response_model=GuestPostListItem)
+def wf_verify(
+    gp_id: uuid.UUID, body: WorkflowVerify, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).verify(gp_id, body.approve, body.note))
+
+
+@router.post("/{gp_id}/workflow/reassign", response_model=GuestPostListItem)
+def wf_reassign(
+    gp_id: uuid.UUID, body: WorkflowReassign, user: CurrentUser, db: DbSession
+) -> GuestPostListItem:
+    return GuestPostListItem.from_gp(_wf(db, user).reassign(gp_id, body.assignee_id))
 
 
 @router.post("/{gp_id}/workflow/request-payment", response_model=GuestPostListItem)
@@ -159,9 +186,11 @@ def wf_reopen_payment(
 
 @router.post("/{gp_id}/workflow/approve-advance", response_model=GuestPostListItem)
 def wf_approve_advance(
-    gp_id: uuid.UUID, body: WorkflowNote, user: CurrentUser, db: DbSession
+    gp_id: uuid.UUID, body: WorkflowApproveAdvance, user: CurrentUser, db: DbSession
 ) -> GuestPostListItem:
-    return GuestPostListItem.from_gp(_wf(db, user).approve_advance(gp_id, body.note))
+    return GuestPostListItem.from_gp(
+        _wf(db, user).approve_advance(gp_id, body.note, body.content_writer_id)
+    )
 
 
 @router.patch("/{gp_id}", response_model=GuestPostListItem)
