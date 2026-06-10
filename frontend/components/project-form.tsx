@@ -35,6 +35,11 @@ interface ProjectFormProps {
 
 const inputClass =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring";
+// Same look but WITHOUT w-full, for fixed-width controls in a flex row (e.g. the
+// currency select beside an amount). w-full would otherwise override w-28 and
+// eat the whole row, squeezing the amount input to nothing.
+const compactInputClass =
+  "rounded-md border border-input bg-background px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-ring";
 const labelClass = "text-sm font-medium";
 
 /** Convert a select's "" value to null, otherwise parse as an int (for ids). */
@@ -341,7 +346,7 @@ export function ProjectForm({
               aria-label="Budget currency"
               value={budgetCurrency}
               onChange={(e) => setBudgetCurrency(e.target.value)}
-              className={`${inputClass} w-28 shrink-0`}
+              className={`${compactInputClass} w-28 shrink-0`}
             >
               {currencies.length === 0 && (
                 <option value={budgetCurrency}>{budgetCurrency}</option>
