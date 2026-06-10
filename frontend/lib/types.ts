@@ -457,6 +457,10 @@ export interface GuestPostListItem {
   assigned_user: UserRef | null;
   status: string;
   review_status: string;
+  /** Richer project-workflow state machine status (see lib/gp-workflow.ts). */
+  workflow_status: string;
+  /** Writer assigned to produce the content, when one has been set. */
+  content_writer: UserRef | null;
   added_by: UserRef | null;
   outreach_date: string | null;
   live_link_date: string | null;

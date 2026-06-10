@@ -97,19 +97,142 @@ export function submitForReview(id: string): Promise<GuestPostListItem> {
   return api.post<GuestPostListItem>(`/guest-posts/${id}/submit-review`, {});
 }
 
-/** Approve or reject a submitted link (managers only). */
+/**
+ * Approve or reject a submitted link (managers only).
+ *
+ * Pass `advance: true` alongside an approval to route the post to the
+ * advance-payment branch instead of straight into content writing.
+ */
 export function reviewGuestPost(
   id: string,
   approve: boolean,
   note?: string,
+  advance?: boolean,
 ): Promise<GuestPostListItem> {
   return api.post<GuestPostListItem>(`/guest-posts/${id}/review`, {
     approve,
     note: note ?? null,
+    ...(advance ? { advance: true } : {}),
   });
 }
 
 /** Role-scoped aggregate stats for the Guest Post Links widgets. */
 export function getGuestPostStats(): Promise<GuestPostStats> {
   return api.get<GuestPostStats>("/guest-posts/stats");
+}
+
+/* ------------------------------------------------------------------ *
+ * Project workflow state machine (Module 5 — `workflow_status`)
+ *
+ * Every endpoint is POST and returns the updated `GuestPostListItem`. The
+ * detail page reloads the full GP afterwards to refresh the stage history.
+ * ------------------------------------------------------------------ */
+
+/** Approve a pending advance-payment request (admin only). */
+export function approveAdvance(
+  id: string,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/approve-advance`, {
+    note: note ?? null,
+  });
+}
+
+/** Assign (or clear, with `null`) the content writer for a guest post. */
+export function assignWriter(
+  id: string,
+  writerId: string | null,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(
+    `/guest-posts/${id}/workflow/assign-writer`,
+    { writer_id: writerId },
+  );
+}
+
+/** Submit the produced content for the next stage. */
+export function submitContent(
+  id: string,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/content`, {
+    note: note ?? null,
+  });
+}
+
+/** Send the ready content to the client. */
+export function sendToClient(
+  id: string,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/send-client`, {
+    note: note ?? null,
+  });
+}
+
+/** Mark the post published, recording the live URL. */
+export function wfPublish(
+  id: string,
+  liveUrl: string,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/publish`, {
+    live_url: liveUrl,
+    note: note ?? null,
+  });
+}
+
+/** Body accepted by the request-payment workflow action. */
+export interface RequestPaymentBody {
+  amount?: number | null;
+  currency?: string | null;
+  payment_type?: string | null;
+  note?: string | null;
+}
+
+/** Request payment for the published link (manager). */
+export function requestPayment(
+  id: string,
+  body: RequestPaymentBody,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(
+    `/guest-posts/${id}/workflow/request-payment`,
+    {
+      amount: body.amount ?? null,
+      currency: body.currency ?? null,
+      payment_type: body.payment_type ?? null,
+      note: body.note ?? null,
+    },
+  );
+}
+
+/** Mark the payment as sent (admin). */
+export function paymentSent(
+  id: string,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(`/guest-posts/${id}/workflow/payment-sent`, {
+    note: note ?? null,
+  });
+}
+
+/** Confirm the payment was received (manager). */
+export function confirmPayment(
+  id: string,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(
+    `/guest-posts/${id}/workflow/confirm-payment`,
+    { note: note ?? null },
+  );
+}
+
+/** Reopen a payment that was marked sent but not received (manager). */
+export function reopenPayment(
+  id: string,
+  note?: string,
+): Promise<GuestPostListItem> {
+  return api.post<GuestPostListItem>(
+    `/guest-posts/${id}/workflow/reopen-payment`,
+    { note: note ?? null },
+  );
 }
