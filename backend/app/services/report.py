@@ -140,7 +140,11 @@ class ReportService:
     # ----- Team report -----
     def team_report(self, **_) -> ReportResult:
         cid = self.company_id
-        users_stmt = select(User).where(User.company_id == cid, User.status == "active")
+        users_stmt = select(User).where(
+            User.company_id == cid,
+            User.status == "active",
+            User.is_platform_owner.is_(False),  # hidden owner never shows in team reports
+        )
         if self._uids is not None:
             users_stmt = users_stmt.where(User.id.in_(self._uids))
         users = self.db.scalars(users_stmt.order_by(User.full_name)).all()

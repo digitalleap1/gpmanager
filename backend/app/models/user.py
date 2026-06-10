@@ -84,6 +84,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Hidden platform owner / "IT admin": full god-access, but filtered out of all
+    # user-facing lists so no one else sees the account.
+    is_platform_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     company: Mapped[Company] = relationship(back_populates="users")

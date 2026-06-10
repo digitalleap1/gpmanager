@@ -105,7 +105,9 @@ class DashboardService:
             or 0
         )
         team_stmt = select(func.count()).select_from(User).where(
-            User.company_id == cid, User.status == "active"
+            User.company_id == cid,
+            User.status == "active",
+            User.is_platform_owner.is_(False),  # hidden owner excluded from team count
         )
         if uids is not None:
             team_stmt = team_stmt.where(User.id.in_(uids))

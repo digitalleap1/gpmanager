@@ -48,6 +48,9 @@ class UserAdminService:
     def list(self, search: str | None = None) -> list[User]:
         self._require_manager()
         stmt = select(User).where(User.company_id == self.company_id)
+        # Hidden platform owner(s) are invisible to everyone except another owner.
+        if not self.actor.is_platform_owner:
+            stmt = stmt.where(User.is_platform_owner.is_(False))
         if search:
             like = f"%{search.strip()}%"
             stmt = stmt.where(or_(User.full_name.ilike(like), User.email.ilike(like)))
