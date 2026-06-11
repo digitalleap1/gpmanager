@@ -147,18 +147,44 @@ class TaskService:
                 entity_id=t.id,
                 new={"name": t.name},
             )
-            Notifier(self.db).notify_admins(
+            notifier = Notifier(self.db)
+            body = f"{self.user.full_name} completed the task '{t.name}'."
+            notifier.notify_admins(
                 company_id=self.company_id,
                 type="task_completed",
                 title="Task completed",
-                body=f"{self.user.full_name} completed the task '{t.name}'.",
+                body=body,
                 entity_type="task",
                 entity_id=t.id,
                 exclude=self.user.id,
             )
+            # Keep the whole project team informed of every completed step.
+            for uid in self._project_audience(t.project_id) - {self.user.id}:
+                notifier.notify(
+                    company_id=self.company_id, user_id=uid, type="task_completed",
+                    title="Task completed", body=body, entity_type="task", entity_id=t.id,
+                )
             self.db.commit()
             self.db.refresh(t)
         return t
+
+    def _project_audience(self, project_id: uuid.UUID | None) -> set[uuid.UUID]:
+        """Members + team lead + assignee + creator of a project (empty if none)."""
+        if project_id is None:
+            return set()
+        from sqlalchemy import select
+
+        from app.models.project import Project, ProjectMember
+
+        ids = set(
+            self.db.scalars(
+                select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)
+            ).all()
+        )
+        proj = self.db.get(Project, project_id)
+        if proj:
+            ids |= {proj.team_lead_id, proj.assignee_id, proj.created_by}
+        return {u for u in ids if u}
 
     def add_comment(self, task_id: uuid.UUID, body: str) -> TaskComment:
         self.get(task_id)  # visibility check

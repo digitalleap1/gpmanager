@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_manager
 from app.core.scope import accessible_project_ids
-from app.models.project import Project, ProjectWorkflowStage
+from app.models.project import Project, ProjectMember, ProjectWorkflowStage
 from app.models.task import Task
 from app.models.user import User
 from app.services.activity import ActivityLogger
@@ -59,6 +59,32 @@ class ProjectWorkflowService:
             )
         ).all()
         return {r.stage_key: r for r in rows}
+
+    def _audience(self, project: Project) -> set[uuid.UUID]:
+        """Everyone involved in a project: members + team lead + assignee + creator."""
+        member_ids = set(
+            self.db.scalars(
+                select(ProjectMember.user_id).where(ProjectMember.project_id == project.id)
+            ).all()
+        )
+        member_ids |= {project.team_lead_id, project.assignee_id, project.created_by}
+        return {u for u in member_ids if u}
+
+    def _broadcast(
+        self, project: Project, *, type: str, title: str, body: str,
+        entity_type: str, entity_id: uuid.UUID,
+    ) -> None:
+        """Notify the whole project audience (members + lead + assignee + creator)
+        plus all admins — everyone hears about every step."""
+        for uid in self._audience(project) - {self.user.id}:
+            self.notifier.notify(
+                company_id=self.company_id, user_id=uid, type=type, title=title,
+                body=body, entity_type=entity_type, entity_id=entity_id,
+            )
+        self.notifier.notify_admins(
+            company_id=self.company_id, type=type, title=title, body=body,
+            entity_type=entity_type, entity_id=entity_id, exclude=self.user.id,
+        )
 
     def checklist(self, project_id: uuid.UUID) -> dict:
         p = self._project(project_id)
@@ -141,26 +167,25 @@ class ProjectWorkflowService:
                 task.assigned_to = assignee_id
                 task.status = "pending"
                 task.completed_at = None
-            # Notify the new assignee (admins are notified by task create elsewhere;
-            # here we ensure both the assignee and admins always hear about it).
+            # The assignee gets a task-specific ping...
             if assignee_id != self.user.id:
                 self.notifier.notify(
                     company_id=self.company_id,
                     user_id=assignee_id,
                     type="workflow_stage_assigned",
-                    title=f"{label} assigned",
+                    title=f"{label} assigned to you",
                     body=f"You were assigned '{label}' on the project '{p.name}'.",
                     entity_type="task",
                     entity_id=task.id,
                 )
-            self.notifier.notify_admins(
-                company_id=self.company_id,
-                type="workflow_stage_assigned",
-                title=f"{label} assigned",
-                body=f"{self.user.full_name} assigned '{label}' on '{p.name}'.",
-                entity_type="project",
-                entity_id=p.id,
-                exclude=self.user.id,
+            # ...and EVERYONE on the project (members + lead + assignee + admins)
+            # is kept informed of the step.
+            assignee = self.db.get(User, assignee_id)
+            assignee_name = assignee.full_name if assignee else "someone"
+            self._broadcast(
+                p, type="workflow_stage_assigned", title=f"{label} assigned",
+                body=f"{self.user.full_name} assigned '{label}' to {assignee_name} on '{p.name}'.",
+                entity_type="project", entity_id=p.id,
             )
         elif task is not None:
             # Cleared the assignee — unassign the task.
