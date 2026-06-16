@@ -109,6 +109,14 @@ function errMsg(err: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Parse a numeric-string field to an integer, or undefined when blank/invalid. */
+function intOrUndef(v: string): number | undefined {
+  const t = v.trim();
+  if (t === "") return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.trunc(n) : undefined;
+}
+
 /** Build up-to-two-letter initials from a display name. */
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -269,6 +277,13 @@ function ChecklistItemCard({
       !!item.payment_type ||
       !!item.transaction_id ||
       !!item.payment_mode);
+  const hasWebsiteMetrics =
+    item.item_key === "find_website" &&
+    (item.da != null ||
+      item.pa != null ||
+      item.dr != null ||
+      item.traffic != null ||
+      item.amount != null);
 
   return (
     <li className="overflow-hidden rounded-lg border border-border bg-background/50">
@@ -344,6 +359,13 @@ function ChecklistItemCard({
       {hasPaymentDetails && (
         <div className="-mt-1 px-4 pb-3">
           <PaymentChips item={item} />
+        </div>
+      )}
+
+      {/* Website metric chips (collapsed header context) */}
+      {hasWebsiteMetrics && (
+        <div className="-mt-1 px-4 pb-3">
+          <WebsiteChips item={item} />
         </div>
       )}
 
@@ -425,6 +447,7 @@ function UpdateStatusModal({
   ) => Promise<void>;
 }) {
   const isPayment = item.item_key === "payment";
+  const isFindWebsite = item.item_key === "find_website";
 
   const [status, setStatus] = useState<ChecklistStatus>(item.status);
   const [link, setLink] = useState(item.link ?? "");
@@ -432,7 +455,7 @@ function UpdateStatusModal({
   const [assigneeId, setAssigneeId] = useState(item.assignee?.id ?? "");
   const statusRef = useRef<HTMLSelectElement>(null);
 
-  // Payment-only fields.
+  // Payment fields (payment item) + budget (find-website item) share amount/currency.
   const [paymentType, setPaymentType] = useState(item.payment_type ?? "regular");
   const [amount, setAmount] = useState(
     item.amount != null ? String(item.amount) : "",
@@ -441,12 +464,20 @@ function UpdateStatusModal({
   const [transactionId, setTransactionId] = useState(item.transaction_id ?? "");
   const [paymentMode, setPaymentMode] = useState(item.payment_mode ?? "");
 
+  // Find-a-Website metrics.
+  const [da, setDa] = useState(item.da != null ? String(item.da) : "");
+  const [pa, setPa] = useState(item.pa != null ? String(item.pa) : "");
+  const [dr, setDr] = useState(item.dr != null ? String(item.dr) : "");
+  const [traffic, setTraffic] = useState(
+    item.traffic != null ? String(item.traffic) : "",
+  );
+
   const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
   const [currencyError, setCurrencyError] = useState<string | null>(null);
 
-  // Load currencies for the payment item only.
+  // Load currencies for the payment item + the find-website budget.
   useEffect(() => {
-    if (!isPayment) return;
+    if (!isPayment && !isFindWebsite) return;
     let active = true;
     void (async () => {
       try {
@@ -463,7 +494,7 @@ function UpdateStatusModal({
     return () => {
       active = false;
     };
-  }, [isPayment]);
+  }, [isPayment, isFindWebsite]);
 
   // Close on Escape, and autofocus the status select on open.
   useEffect(() => {
@@ -501,6 +532,19 @@ function UpdateStatusModal({
               currency,
               transactionId: transactionId.trim() || undefined,
               paymentMode: paymentMode.trim() || undefined,
+            }
+          : {}),
+        ...(isFindWebsite
+          ? {
+              da: intOrUndef(da),
+              pa: intOrUndef(pa),
+              dr: intOrUndef(dr),
+              traffic: intOrUndef(traffic),
+              amount:
+                parsedAmount !== undefined && Number.isFinite(parsedAmount)
+                  ? parsedAmount
+                  : undefined,
+              currency,
             }
           : {}),
       });
@@ -689,6 +733,89 @@ function UpdateStatusModal({
                   className={fieldCls}
                 />
               </div>
+            </>
+          )}
+
+          {isFindWebsite && (
+            <>
+              <div className="grid grid-cols-4 gap-2">
+                {(
+                  [
+                    ["DA", da, setDa, 100],
+                    ["PA", pa, setPa, 100],
+                    ["DR", dr, setDr, 100],
+                    ["Traffic", traffic, setTraffic, undefined],
+                  ] as const
+                ).map(([label, val, setter, max]) => (
+                  <div key={label} className="space-y-1.5">
+                    <label className="block text-xs font-medium text-muted-foreground">
+                      {label}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={max}
+                      step="1"
+                      inputMode="numeric"
+                      value={val}
+                      disabled={disabled}
+                      onChange={(e) => setter(e.target.value)}
+                      className={fieldCls}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 space-y-1.5">
+                  <label
+                    htmlFor="checklist-budget"
+                    className="block text-xs font-medium text-muted-foreground"
+                  >
+                    Budget
+                  </label>
+                  <input
+                    id="checklist-budget"
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={amount}
+                    disabled={disabled}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    className={fieldCls}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="checklist-budget-currency"
+                    className="block text-xs font-medium text-muted-foreground"
+                  >
+                    Currency
+                  </label>
+                  <select
+                    id="checklist-budget-currency"
+                    value={currency}
+                    disabled={disabled}
+                    onChange={(e) => setCurrency(e.target.value)}
+                    className={fieldCls}
+                  >
+                    {currencies.length === 0 ? (
+                      <option value={currency}>{currency}</option>
+                    ) : (
+                      currencies.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.code}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
+              {currencyError && (
+                <p className="text-xs text-destructive">{currencyError}</p>
+              )}
             </>
           )}
 
@@ -908,6 +1035,39 @@ function PaymentChips({ item }: { item: ChecklistItem }) {
         <span className="inline-flex items-center gap-1">
           <span aria-hidden="true">·</span>
           {item.payment_mode}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Find-a-Website metric chips (DA / PA / DR / Traffic / Budget). */
+function WebsiteChips({ item }: { item: ChecklistItem }) {
+  const metrics: [string, number | null][] = [
+    ["DA", item.da],
+    ["PA", item.pa],
+    ["DR", item.dr],
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      {metrics
+        .filter(([, v]) => v != null)
+        .map(([label, v]) => (
+          <span
+            key={label}
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-medium text-foreground"
+          >
+            {label} {v}
+          </span>
+        ))}
+      {item.traffic != null && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">
+          Traffic {item.traffic.toLocaleString()}
+        </span>
+      )}
+      {item.amount != null && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+          Budget {formatAmount(item.amount, item.currency)}
         </span>
       )}
     </div>

@@ -408,6 +408,11 @@ export interface ChecklistItem {
   currency: string | null;
   transaction_id: string | null;
   payment_mode: string | null;
+  /** Find-a-Website metrics (set only on the `find_website` item). */
+  da: number | null;
+  pa: number | null;
+  dr: number | null;
+  traffic: number | null;
 }
 
 /** A project's full workflow checklist (`GET /projects/{id}/checklist`). */

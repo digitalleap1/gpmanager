@@ -231,6 +231,10 @@ export function setChecklistStatus(
     currency?: string;
     transactionId?: string;
     paymentMode?: string;
+    da?: number;
+    pa?: number;
+    dr?: number;
+    traffic?: number;
   },
 ): Promise<Checklist> {
   const body: {
@@ -243,6 +247,10 @@ export function setChecklistStatus(
     currency?: string;
     transaction_id?: string;
     payment_mode?: string;
+    da?: number;
+    pa?: number;
+    dr?: number;
+    traffic?: number;
   } = { status };
 
   const note = opts?.note?.trim();
@@ -264,6 +272,12 @@ export function setChecklistStatus(
   if (transactionId) body.transaction_id = transactionId;
   const paymentMode = opts?.paymentMode?.trim();
   if (paymentMode) body.payment_mode = paymentMode;
+
+  // Find-a-Website metrics — send each only when it's a finite number.
+  for (const key of ["da", "pa", "dr", "traffic"] as const) {
+    const v = opts?.[key];
+    if (typeof v === "number" && Number.isFinite(v)) body[key] = v;
+  }
 
   return api.put<Checklist>(
     `/projects/${projectId}/checklist/${itemId}/status`,
