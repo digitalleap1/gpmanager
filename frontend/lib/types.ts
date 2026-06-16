@@ -909,7 +909,12 @@ export interface NotificationListParams {
  * ------------------------------------------------------------------ */
 
 /** Report path segment / discriminator. */
-export type ReportType = "project" | "team" | "financial" | "guest-post";
+export type ReportType =
+  | "project"
+  | "workflow"
+  | "team"
+  | "financial"
+  | "guest-post";
 
 /** A single column descriptor in a generic report. */
 export interface ReportColumn {

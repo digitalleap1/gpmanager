@@ -19,7 +19,7 @@ from app.core.permissions import is_manager
 from app.core.scope import accessible_project_ids, accessible_user_ids
 from app.models.guest_post import GuestPost
 from app.models.payment import Payment
-from app.models.project import Project
+from app.models.project import Project, ProjectChecklistItem
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.report import ReportColumn, ReportResult
@@ -338,6 +338,83 @@ class ReportService:
             ),
             rows=rows,
             totals={"website": "TOTAL", "price": round(t_price, 2)},
+        )
+
+    # ----- Workflow (checklist) report -----
+    def workflow_report(
+        self, *, project_id: uuid.UUID | None = None, team_lead_id: uuid.UUID | None = None, **_
+    ) -> ReportResult:
+        """Per-project view of the workflow checklist: each stage's status, the
+        payment details, and overall completion."""
+        from app.services.project_checklist import ITEMS, STATUS_LABELS
+
+        cid = self.company_id
+        stmt = select(Project).where(Project.company_id == cid, Project.deleted_at.is_(None))
+        if self._pids is not None:
+            stmt = stmt.where(Project.id.in_(self._pids))
+        if project_id:
+            stmt = stmt.where(Project.id == project_id)
+        if team_lead_id:
+            stmt = stmt.where(Project.team_lead_id == team_lead_id)
+        projects = list(self.db.scalars(stmt.order_by(Project.name)).all())
+
+        by_project: dict = {}
+        pids = [p.id for p in projects]
+        if pids:
+            for it in self.db.scalars(
+                select(ProjectChecklistItem).where(ProjectChecklistItem.project_id.in_(pids))
+            ).all():
+                by_project.setdefault(it.project_id, {})[it.item_key] = it
+
+        done_states = {"done", "completed", "approved"}
+        rows: list[dict] = []
+        t_amount = 0.0
+        t_completed = 0
+        for p in projects:
+            items = by_project.get(p.id, {})
+
+            def st(key: str, items=items) -> str:
+                it = items.get(key)
+                return STATUS_LABELS.get(it.status, it.status) if it else "—"
+
+            pay = items.get("payment")
+            amount = float(pay.amount) if pay and pay.amount is not None else 0.0
+            completed = sum(
+                1 for k, _ in ITEMS if items.get(k) and items[k].status in done_states
+            )
+            t_amount += amount
+            t_completed += completed
+            rows.append(
+                {
+                    "project": p.name,
+                    "team_lead": p.team_lead.full_name if p.team_lead else None,
+                    "find_website": st("find_website"),
+                    "content_writing": st("content_writing"),
+                    "publish": st("publish_live_link"),
+                    "payment": st("payment"),
+                    "payment_type": pay.payment_type if pay else None,
+                    "payment_amount": amount or None,
+                    "currency": (pay.currency if pay else None),
+                    "transaction_id": pay.transaction_id if pay else None,
+                    "completed": f"{completed}/{len(ITEMS)}",
+                }
+            )
+        return ReportResult(
+            report_type="workflow",
+            columns=_cols(
+                ("project", "Project"), ("team_lead", "Team Lead"),
+                ("find_website", "Website"), ("content_writing", "Content"),
+                ("publish", "Publish/Live"), ("payment", "Payment"),
+                ("payment_type", "Pay Type"), ("payment_amount", "Amount"),
+                ("currency", "Cur"), ("transaction_id", "Txn ID"),
+                ("completed", "Completed"),
+            ),
+            rows=rows,
+            totals={
+                "project": "TOTAL",
+                "payment_amount": round(t_amount, 2),
+                "completed": f"{t_completed}/{len(projects) * len(ITEMS)}" if projects else "0/0",
+            },
         )
 
     @staticmethod

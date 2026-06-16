@@ -46,6 +46,7 @@ def run_report(
         "team": svc.team_report,
         "financial": svc.financial_report,
         "guest-post": svc.guest_post_report,
+        "workflow": svc.workflow_report,
     }
     builder = builders.get(report_type)
     if builder is None:

@@ -23,6 +23,7 @@ import { exportReport, runReport } from "@/services/report-service";
 
 const REPORT_TYPES: { value: ReportType; label: string }[] = [
   { value: "project", label: "Project" },
+  { value: "workflow", label: "Workflow" },
   { value: "team", label: "Team" },
   { value: "financial", label: "Financial" },
   { value: "guest-post", label: "Guest Post" },
