@@ -7,7 +7,7 @@ from __future__ import annotations  # lazy annotations: the `list` method must n
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
@@ -89,8 +89,11 @@ class ProjectService:
         if not is_manager(self.user):
             raise PermissionDenied("You do not have permission to create projects")
         ensure_assignable(self.db, self.user, data.assignee_id)
-        p = Project(company_id=self.company_id, created_by=self.user.id, **data.model_dump())
+        payload = data.model_dump()
+        member_ids = payload.pop("member_ids", None) or []
+        p = Project(company_id=self.company_id, created_by=self.user.id, **payload)
         self.projects.add(p)
+        self.db.flush()
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,
@@ -121,21 +124,53 @@ class ProjectService:
             entity_id=p.id,
             exclude=self.user.id,
         )
+        self._sync_members(p, member_ids, notifier)
         self.db.commit()
         self.db.refresh(p)
         return p
+
+    def _sync_members(
+        self, project: Project, member_ids: list[uuid.UUID], notifier: Notifier
+    ) -> None:
+        """Make the project's member set exactly `member_ids`: add new ones (and
+        notify them), remove the rest."""
+        wanted = {m for m in member_ids if m}
+        current = {
+            m.user_id
+            for m in self.db.scalars(
+                select(ProjectMember).where(ProjectMember.project_id == project.id)
+            ).all()
+        }
+        for uid in wanted - current:
+            self.db.add(ProjectMember(project_id=project.id, user_id=uid))
+            if uid != self.user.id:
+                notifier.notify(
+                    company_id=self.company_id, user_id=uid, type="project_member_added",
+                    title="Added to a project",
+                    body=f"You were added as a member of the project '{project.name}'.",
+                    entity_type="project", entity_id=project.id,
+                )
+        for uid in current - wanted:
+            self.db.execute(
+                delete(ProjectMember).where(
+                    ProjectMember.project_id == project.id, ProjectMember.user_id == uid
+                )
+            )
 
     def update(self, project_id: uuid.UUID, data: ProjectUpdate) -> Project:
         if not is_manager(self.user):
             raise PermissionDenied()
         p = self.get(project_id)
         changes = data.model_dump(exclude_unset=True)
+        member_ids = changes.pop("member_ids", None)  # not a Project column — sync separately
         if "assignee_id" in changes:
             ensure_assignable(self.db, self.user, changes["assignee_id"])
         old = {key: getattr(p, key) for key in changes}
         for key, value in changes.items():
             setattr(p, key, value)
         notifier = Notifier(self.db)
+        if member_ids is not None:
+            self._sync_members(p, member_ids, notifier)
         for field, role_word in (("assignee_id", "assigned to"), ("team_lead_id", "team lead of")):
             uid = changes.get(field)
             if uid and uid != self.user.id:

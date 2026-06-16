@@ -34,6 +34,7 @@ class ProjectCreate(BaseModel):
     target_country_id: int | None = None
     assignee_id: uuid.UUID | None = None
     team_lead_id: uuid.UUID | None = None
+    member_ids: list[uuid.UUID] = Field(default_factory=list)
     monthly_budget: float = Field(default=0, ge=0)
     budget_currency: str = DEFAULT_CURRENCY
     budget_period: str = "monthly"
@@ -74,6 +75,8 @@ class ProjectUpdate(BaseModel):
     target_country_id: int | None = None
     assignee_id: uuid.UUID | None = None
     team_lead_id: uuid.UUID | None = None
+    # None = leave members unchanged; a list (even empty) = replace the member set.
+    member_ids: list[uuid.UUID] | None = None
     monthly_budget: float | None = Field(default=None, ge=0)
     budget_currency: str | None = None
     budget_period: str | None = None
