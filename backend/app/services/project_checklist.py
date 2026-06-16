@@ -6,6 +6,7 @@ comment, payment request) notifies EVERYONE assigned to the project.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -120,6 +121,44 @@ class ProjectChecklistService:
             raise NotFound("Checklist item not found")
         return item
 
+    def _sync_guest_post(self, item: ProjectChecklistItem, *, live: bool) -> None:
+        """Mirror the found website (and later the live link) into a Guest Post so
+        it appears on /guest-posts + flows into reports. The find_website item
+        holds the canonical guest_post_id for the project."""
+        from app.models.guest_post import GuestPost
+
+        fw = self.db.scalar(
+            select(ProjectChecklistItem).where(
+                ProjectChecklistItem.project_id == item.project_id,
+                ProjectChecklistItem.item_key == "find_website",
+            )
+        )
+        gp_id = (fw.guest_post_id if fw else None) or item.guest_post_id
+        gp = self.db.get(GuestPost, gp_id) if gp_id else None
+        if gp is None:
+            gp = GuestPost(
+                company_id=self.company_id, project_id=item.project_id,
+                created_by=self.user.id, status="prospect",
+            )
+            self.db.add(gp)
+            self.db.flush()
+        if fw is not None:
+            fw.guest_post_id = gp.id
+        item.guest_post_id = gp.id
+        if live:
+            gp.live_link = (item.link or "")[:700] or None
+            gp.live_link_date = datetime.now(UTC).date()
+            gp.status = "published"
+        else:
+            raw = item.link or ""
+            name = raw.replace("https://", "").replace("http://", "").split("/")[0][:180]
+            gp.website_name = name or raw[:180]
+            gp.da = item.da
+            gp.dr = item.dr
+            gp.traffic = item.traffic
+            if item.amount is not None:
+                gp.price = item.amount
+
     @staticmethod
     def _entry_dto(e: ProjectChecklistEntry) -> dict:
         return {
@@ -154,6 +193,10 @@ class ProjectChecklistService:
             "currency": item.currency,
             "transaction_id": item.transaction_id,
             "payment_mode": item.payment_mode,
+            "da": item.da,
+            "pa": item.pa,
+            "dr": item.dr,
+            "traffic": item.traffic,
             "timeline": [self._entry_dto(e) for e in item.entries],
         }
 
@@ -196,6 +239,10 @@ class ProjectChecklistService:
         currency: str | None = None,
         transaction_id: str | None = None,
         payment_mode: str | None = None,
+        da: int | None = None,
+        pa: int | None = None,
+        dr: int | None = None,
+        traffic: int | None = None,
     ) -> dict:
         if status not in STATUSES:
             raise BadRequest(f"status must be one of {sorted(STATUSES)}")
@@ -231,6 +278,21 @@ class ProjectChecklistService:
             item.transaction_id = transaction_id or None
         if payment_mode is not None:
             item.payment_mode = payment_mode or None
+        # Find-a-Website metrics.
+        if da is not None:
+            item.da = da
+        if pa is not None:
+            item.pa = pa
+        if dr is not None:
+            item.dr = dr
+        if traffic is not None:
+            item.traffic = traffic
+        # Sync the found website / live link into a Guest Post (so it shows on
+        # the Guest Posts page + carries through to reports).
+        if item.item_key == "find_website" and item.link:
+            self._sync_guest_post(item, live=False)
+        elif item.item_key == "publish_live_link" and item.link:
+            self._sync_guest_post(item, live=True)
         label = STATUS_LABELS.get(status, status)
 
         detail = f"Status changed from {STATUS_LABELS.get(old, old)} to {label}."

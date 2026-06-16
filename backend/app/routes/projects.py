@@ -285,6 +285,7 @@ def set_checklist_status(
             note=body.note, link=body.link, assignee_id=body.assignee_id,
             payment_type=body.payment_type, amount=body.amount, currency=body.currency,
             transaction_id=body.transaction_id, payment_mode=body.payment_mode,
+            da=body.da, pa=body.pa, dr=body.dr, traffic=body.traffic,
         )
     )
 

@@ -232,6 +232,14 @@ class ProjectChecklistItem(UUIDPrimaryKeyMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     link: Mapped[str | None] = mapped_column(String(700))
+    # Find-a-Website metrics (also synced to a Guest Post so it shows on /guest-posts).
+    da: Mapped[int | None] = mapped_column(SmallInteger)
+    pa: Mapped[int | None] = mapped_column(SmallInteger)
+    dr: Mapped[int | None] = mapped_column(SmallInteger)
+    traffic: Mapped[int | None] = mapped_column(Integer)
+    guest_post_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("guest_posts.id", ondelete="SET NULL")
+    )
     # Payment-item details (regular / advance / reversal).
     payment_type: Mapped[str | None] = mapped_column(String(20))
     amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))

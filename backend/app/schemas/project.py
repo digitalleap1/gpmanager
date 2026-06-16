@@ -157,6 +157,10 @@ class ChecklistItemRead(BaseModel):
     currency: str | None
     transaction_id: str | None
     payment_mode: str | None
+    da: int | None
+    pa: int | None
+    dr: int | None
+    traffic: int | None
     timeline: list[ChecklistEntryRead]
 
 
@@ -182,6 +186,11 @@ class ChecklistStatusUpdate(BaseModel):
     currency: str | None = Field(default=None, max_length=3)
     transaction_id: str | None = Field(default=None, max_length=120)
     payment_mode: str | None = Field(default=None, max_length=60)
+    # Find-a-Website metrics.
+    da: int | None = Field(default=None, ge=0, le=100)
+    pa: int | None = Field(default=None, ge=0, le=100)
+    dr: int | None = Field(default=None, ge=0, le=100)
+    traffic: int | None = Field(default=None, ge=0)
 
 
 class ChecklistCommentCreate(BaseModel):

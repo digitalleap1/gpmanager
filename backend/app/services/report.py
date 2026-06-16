@@ -378,6 +378,8 @@ class ReportService:
                 return STATUS_LABELS.get(it.status, it.status) if it else "—"
 
             pay = items.get("payment")
+            fw = items.get("find_website")
+            pub = items.get("publish_live_link")
             amount = float(pay.amount) if pay and pay.amount is not None else 0.0
             completed = sum(
                 1 for k, _ in ITEMS if items.get(k) and items[k].status in done_states
@@ -388,9 +390,16 @@ class ReportService:
                 {
                     "project": p.name,
                     "team_lead": p.team_lead.full_name if p.team_lead else None,
+                    "website_link": fw.link if fw else None,
+                    "da": fw.da if fw else None,
+                    "pa": fw.pa if fw else None,
+                    "dr": fw.dr if fw else None,
+                    "traffic": fw.traffic if fw else None,
+                    "budget": float(fw.amount) if fw and fw.amount is not None else None,
                     "find_website": st("find_website"),
                     "content_writing": st("content_writing"),
                     "publish": st("publish_live_link"),
+                    "live_link": pub.link if pub else None,
                     "payment": st("payment"),
                     "payment_type": pay.payment_type if pay else None,
                     "payment_amount": amount or None,
@@ -403,11 +412,13 @@ class ReportService:
             report_type="workflow",
             columns=_cols(
                 ("project", "Project"), ("team_lead", "Team Lead"),
+                ("website_link", "Website Link"), ("da", "DA"), ("pa", "PA"),
+                ("dr", "DR"), ("traffic", "Traffic"), ("budget", "Budget"),
                 ("find_website", "Website"), ("content_writing", "Content"),
-                ("publish", "Publish/Live"), ("payment", "Payment"),
-                ("payment_type", "Pay Type"), ("payment_amount", "Amount"),
-                ("currency", "Cur"), ("transaction_id", "Txn ID"),
-                ("completed", "Completed"),
+                ("publish", "Publish/Live"), ("live_link", "Live Link"),
+                ("payment", "Payment"), ("payment_type", "Pay Type"),
+                ("payment_amount", "Amount"), ("currency", "Cur"),
+                ("transaction_id", "Txn ID"), ("completed", "Completed"),
             ),
             rows=rows,
             totals={
