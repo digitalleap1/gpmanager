@@ -150,6 +150,8 @@ class ChecklistItemRead(BaseModel):
     status: str
     status_label: str
     position: int
+    link: str | None
+    assignee: UserRef | None
     timeline: list[ChecklistEntryRead]
 
 
@@ -158,6 +160,7 @@ class ChecklistRead(BaseModel):
     project_name: str
     items: list[ChecklistItemRead]
     members: list[UserRef]
+    can_manage_status: bool
     completed_count: int
     total: int
     all_done: bool
@@ -165,6 +168,9 @@ class ChecklistRead(BaseModel):
 
 class ChecklistStatusUpdate(BaseModel):
     status: str
+    note: str | None = Field(default=None, max_length=2000)
+    link: str | None = Field(default=None, max_length=700)
+    assignee_id: uuid.UUID | None = None
 
 
 class ChecklistCommentCreate(BaseModel):

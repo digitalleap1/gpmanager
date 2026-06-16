@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
-from app.core.permissions import is_manager
+from app.core.permissions import is_admin, is_manager
 from app.core.scope import accessible_project_ids
 from app.models.project import (
     Project,
@@ -57,6 +57,10 @@ class ProjectChecklistService:
         if pids is not None and p.id not in pids:
             raise NotFound("Project not found")
         return p
+
+    def _can_manage(self, project: Project) -> bool:
+        """Only the project's OWN team lead and admins may change statuses."""
+        return is_admin(self.user) or self.user.id == project.team_lead_id
 
     def _audience(self, project: Project) -> set[uuid.UUID]:
         ids = set(
@@ -136,6 +140,12 @@ class ProjectChecklistService:
             "status": item.status,
             "status_label": STATUS_LABELS.get(item.status, item.status),
             "position": item.position,
+            "link": item.link,
+            "assignee": (
+                {"id": item.assignee.id, "full_name": item.assignee.full_name}
+                if item.assignee
+                else None
+            ),
             "timeline": [self._entry_dto(e) for e in item.entries],
         }
 
@@ -158,34 +168,75 @@ class ProjectChecklistService:
             "project_name": p.name,
             "items": item_dtos,
             "members": [{"id": u.id, "full_name": u.full_name} for u in members],
+            "can_manage_status": self._can_manage(p),
             "completed_count": done_count,
             "total": len(items),
             "all_done": done_count == len(items),
         }
 
-    def set_status(self, project_id: uuid.UUID, item_id: uuid.UUID, status: str) -> dict:
-        if not is_manager(self.user):
-            raise PermissionDenied("Only team leads and admins update the checklist")
+    def set_status(
+        self,
+        project_id: uuid.UUID,
+        item_id: uuid.UUID,
+        status: str,
+        *,
+        note: str | None = None,
+        link: str | None = None,
+        assignee_id: uuid.UUID | None = None,
+    ) -> dict:
         if status not in STATUSES:
             raise BadRequest(f"status must be one of {sorted(STATUSES)}")
         p = self._project(project_id)
         item = self._item(p, item_id)
+        # Only the project lead / an admin (or the item's current assignee — e.g.
+        # the member doing the payment) may change a status.
+        if not (self._can_manage(p) or self.user.id == item.assignee_id):
+            raise PermissionDenied(
+                "Only the project lead or an admin can change this status."
+            )
+        if assignee_id is not None and assignee_id not in self._audience(p):
+            raise BadRequest("The selected member is not on this project")
+
         old = item.status
         item.status = status
+        if link is not None:
+            item.link = link or None
+        if assignee_id is not None:
+            # Set the relationship object (not just the FK) so the response
+            # reflects it — the session has expire_on_commit=False.
+            item.assignee = self.db.get(User, assignee_id)
         label = STATUS_LABELS.get(status, status)
-        body = f"{self.user.full_name} set '{item.title}' to {label}."
+
+        detail = f"Status changed from {STATUS_LABELS.get(old, old)} to {label}."
+        if link:
+            detail += f" Link: {link}"
         self.db.add(
             ProjectChecklistEntry(
-                item_id=item.id, author_id=self.user.id, kind="status",
-                body=f"Status changed from {STATUS_LABELS.get(old, old)} to {label}.",
+                item_id=item.id, author_id=self.user.id, subject_id=assignee_id,
+                kind="status", body=detail,
             )
         )
+        if note and note.strip():
+            self.db.add(
+                ProjectChecklistEntry(
+                    item_id=item.id, author_id=self.user.id, subject_id=assignee_id,
+                    kind="comment", body=note.strip(),
+                )
+            )
         self.activity.record(
             company_id=self.company_id, user_id=self.user.id, action="checklist.status_changed",
             module="project", entity_type="project", entity_id=p.id,
             new={"name": p.name, "item": item.item_key, "status": status},
         )
-        self._broadcast(p, item, body=body)
+        # Notify the newly-assigned member specifically, then the whole project.
+        if assignee_id and assignee_id != self.user.id:
+            self.notifier.notify(
+                company_id=self.company_id, user_id=assignee_id, type="checklist_assigned",
+                title=f"{item.title} — {p.name}",
+                body=f"{self.user.full_name} assigned you '{item.title}' ({label}).",
+                entity_type="project", entity_id=p.id,
+            )
+        self._broadcast(p, item, body=f"{self.user.full_name} set '{item.title}' to {label}.")
         self.db.commit()
         return self.get(project_id)
 

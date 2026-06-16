@@ -226,6 +226,12 @@ class ProjectChecklistItem(UUIDPrimaryKeyMixin, Base):
     title: Mapped[str] = mapped_column(String(140), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     position: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
+    # Who is currently responsible for this item, and any relevant link
+    # (website URL / live URL / client payment link).
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    link: Mapped[str | None] = mapped_column(String(700))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -234,6 +240,7 @@ class ProjectChecklistItem(UUIDPrimaryKeyMixin, Base):
     )
 
     project: Mapped[Project] = relationship()
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id], lazy="joined")
     entries: Mapped[list[ProjectChecklistEntry]] = relationship(
         back_populates="item",
         cascade="all, delete-orphan",

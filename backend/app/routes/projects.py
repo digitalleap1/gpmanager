@@ -279,7 +279,12 @@ def set_checklist_status(
     project_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistStatusUpdate,
     user: CurrentUser, db: DbSession,
 ) -> ChecklistRead:
-    return ChecklistRead(**ProjectChecklistService(db, user).set_status(project_id, item_id, body.status))
+    return ChecklistRead(
+        **ProjectChecklistService(db, user).set_status(
+            project_id, item_id, body.status,
+            note=body.note, link=body.link, assignee_id=body.assignee_id,
+        )
+    )
 
 
 @router.post("/{project_id}/checklist/{item_id}/comments", response_model=ChecklistRead)
