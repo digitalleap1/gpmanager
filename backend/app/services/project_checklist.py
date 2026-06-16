@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_admin, is_manager
 from app.core.scope import accessible_project_ids
+from app.core.security import verify_password
 from app.models.project import (
     Project,
     ProjectChecklistEntry,
@@ -42,6 +43,8 @@ STATUS_LABELS = {
     "done": "Done",
 }
 PAYMENT_TYPES = {"regular", "advance", "reversal"}
+# An item counts as complete (for the all-done / lock check) in any of these.
+DONE_STATES = {"done", "completed", "approved"}
 
 
 class ProjectChecklistService:
@@ -65,6 +68,29 @@ class ProjectChecklistService:
     def _can_manage(self, project: Project) -> bool:
         """Only the project's OWN team lead and admins may change statuses."""
         return is_admin(self.user) or self.user.id == project.team_lead_id
+
+    def _is_locked(self, project: Project) -> bool:
+        """A checklist is locked once ALL its items are complete."""
+        items = list(
+            self.db.scalars(
+                select(ProjectChecklistItem).where(
+                    ProjectChecklistItem.project_id == project.id
+                )
+            ).all()
+        )
+        return len(items) >= len(ITEMS) and all(it.status in DONE_STATES for it in items)
+
+    def _verify_admin_password(self, password: str | None) -> bool:
+        """True if `password` matches any active admin's login password."""
+        if not password:
+            return False
+        admins = self.db.scalars(
+            select(User).where(User.company_id == self.company_id, User.status == "active")
+        ).all()
+        return any(
+            u.is_admin and u.hashed_password and verify_password(password, u.hashed_password)
+            for u in admins
+        )
 
     def _audience(self, project: Project) -> set[uuid.UUID]:
         ids = set(
@@ -206,7 +232,8 @@ class ProjectChecklistService:
         items = self._ensure_items(p)
         # Re-load with entries.
         item_dtos = [self._item_dto(self.db.get(ProjectChecklistItem, i.id)) for i in items]
-        done_count = sum(1 for i in items if i.status in ("done", "completed", "approved"))
+        done_count = sum(1 for i in items if i.status in DONE_STATES)
+        all_done = done_count == len(items)
         # The project's members (for the "who did this" picker on comments).
         member_ids = self._audience(p)
         members = (
@@ -222,7 +249,8 @@ class ProjectChecklistService:
             "can_manage_status": self._can_manage(p),
             "completed_count": done_count,
             "total": len(items),
-            "all_done": done_count == len(items),
+            "all_done": all_done,
+            "locked": all_done,
         }
 
     def set_status(
@@ -243,6 +271,7 @@ class ProjectChecklistService:
         pa: int | None = None,
         dr: int | None = None,
         traffic: int | None = None,
+        password: str | None = None,
     ) -> dict:
         if status not in STATUSES:
             raise BadRequest(f"status must be one of {sorted(STATUSES)}")
@@ -253,6 +282,12 @@ class ProjectChecklistService:
         if not (self._can_manage(p) or self.user.id == item.assignee_id):
             raise PermissionDenied(
                 "Only the project lead or an admin can change this status."
+            )
+        # Once the whole checklist is complete it's LOCKED — any further edit
+        # needs an admin password to unlock.
+        if self._is_locked(p) and not self._verify_admin_password(password):
+            raise PermissionDenied(
+                "This checklist is complete and locked. Enter an admin password to edit it."
             )
         if assignee_id is not None and assignee_id not in self._audience(p):
             raise BadRequest("The selected member is not on this project")

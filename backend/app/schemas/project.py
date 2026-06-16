@@ -173,6 +173,7 @@ class ChecklistRead(BaseModel):
     completed_count: int
     total: int
     all_done: bool
+    locked: bool
 
 
 class ChecklistStatusUpdate(BaseModel):
@@ -191,6 +192,8 @@ class ChecklistStatusUpdate(BaseModel):
     pa: int | None = Field(default=None, ge=0, le=100)
     dr: int | None = Field(default=None, ge=0, le=100)
     traffic: int | None = Field(default=None, ge=0)
+    # Admin password to edit a completed (locked) checklist.
+    password: str | None = None
 
 
 class ChecklistCommentCreate(BaseModel):
