@@ -10,6 +10,7 @@ import type {
   BulkAssignResult,
   BulkImportResult,
   Checklist,
+  ChecklistStatus,
   MonthlyBudget,
   MonthlyGoal,
   Page,
@@ -202,24 +203,57 @@ export function addProjectComment(
 
 /* --- Workflow checklist --- */
 
-/** Fetch the project's three-stage workflow checklist. */
+/**
+ * Fetch the project's four-item workflow checklist. The four items are
+ * auto-generated on the backend the first time this is called.
+ */
 export function getChecklist(projectId: string): Promise<Checklist> {
   return api.get<Checklist>(`/projects/${projectId}/checklist`);
 }
 
 /**
- * Assign (or clear, with `null`) the person responsible for one workflow stage.
- * Creates/updates the underlying Task on the backend. Manager-only — a 403 is
- * surfaced as an `ApiError`. Returns the updated checklist.
+ * Set the status of one checklist item. Managers only — a 403 is surfaced as an
+ * `ApiError`. Returns the updated checklist.
  */
-export function assignChecklistStage(
+export function setChecklistStatus(
   projectId: string,
-  stageKey: string,
-  assigneeId: string | null,
+  itemId: string,
+  status: ChecklistStatus,
 ): Promise<Checklist> {
-  return api.put<Checklist>(`/projects/${projectId}/checklist/${stageKey}`, {
-    assignee_id: assigneeId,
-  });
+  return api.put<Checklist>(
+    `/projects/${projectId}/checklist/${itemId}/status`,
+    { status },
+  );
+}
+
+/**
+ * Add a comment to one checklist item's activity timeline. Available to anyone
+ * on the project. Returns the updated checklist.
+ */
+export function addChecklistComment(
+  projectId: string,
+  itemId: string,
+  body: string,
+): Promise<Checklist> {
+  return api.post<Checklist>(
+    `/projects/${projectId}/checklist/${itemId}/comments`,
+    { body },
+  );
+}
+
+/**
+ * Request payment for the payment checklist item (managers only). An optional
+ * note is recorded on the timeline. Returns the updated checklist.
+ */
+export function requestChecklistPayment(
+  projectId: string,
+  itemId: string,
+  note?: string,
+): Promise<Checklist> {
+  return api.post<Checklist>(
+    `/projects/${projectId}/checklist/${itemId}/request-payment`,
+    note != null ? { note } : {},
+  );
 }
 
 /* --- Monthly goals --- */

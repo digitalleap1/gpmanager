@@ -361,30 +361,50 @@ export interface WebsiteUsedItem {
 
 /* --- Project Workflow Checklist (`/projects/{id}/checklist`) --- */
 
-/** The three ordered workflow stages a project moves through. */
-export type ChecklistStageKey =
-  | "website_review"
+/** The four fixed workflow items every project moves through. */
+export type ChecklistItemKey =
+  | "find_website"
   | "content_writing"
+  | "publish_live_link"
   | "payment";
 
-/** One stage of a project's workflow checklist. */
-export interface ChecklistStage {
-  stage_key: ChecklistStageKey;
-  label: string;
-  assignee: UserRef | null;
-  task_id: string | null;
-  task_status: TaskStatus | null;
-  done: boolean;
+/** The lifecycle status a checklist item can hold. */
+export type ChecklistStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "approved"
+  | "done";
+
+/** One entry in a checklist item's activity timeline — a comment or a system
+ * status change. */
+export interface ChecklistEntry {
+  id: string;
+  kind: "comment" | "status";
+  body: string;
+  author: UserRef | null;
+  created_at: string;
+}
+
+/** One item of a project's workflow checklist, with its status + timeline. */
+export interface ChecklistItem {
+  id: string;
+  item_key: ChecklistItemKey;
+  title: string;
+  status: ChecklistStatus;
+  status_label: string;
+  position: number;
+  timeline: ChecklistEntry[];
 }
 
 /** A project's full workflow checklist (`GET /projects/{id}/checklist`). */
 export interface Checklist {
   project_id: string;
   project_name: string;
-  stages: ChecklistStage[];
-  all_done: boolean;
+  items: ChecklistItem[];
   completed_count: number;
   total: number;
+  all_done: boolean;
 }
 
 export interface ProjectCreate {
