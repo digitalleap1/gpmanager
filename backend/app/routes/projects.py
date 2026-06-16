@@ -283,6 +283,8 @@ def set_checklist_status(
         **ProjectChecklistService(db, user).set_status(
             project_id, item_id, body.status,
             note=body.note, link=body.link, assignee_id=body.assignee_id,
+            payment_type=body.payment_type, amount=body.amount, currency=body.currency,
+            transaction_id=body.transaction_id, payment_mode=body.payment_mode,
         )
     )
 

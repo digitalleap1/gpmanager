@@ -152,6 +152,11 @@ class ChecklistItemRead(BaseModel):
     position: int
     link: str | None
     assignee: UserRef | None
+    payment_type: str | None
+    amount: float | None
+    currency: str | None
+    transaction_id: str | None
+    payment_mode: str | None
     timeline: list[ChecklistEntryRead]
 
 
@@ -171,6 +176,12 @@ class ChecklistStatusUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
     link: str | None = Field(default=None, max_length=700)
     assignee_id: uuid.UUID | None = None
+    # Payment-item details.
+    payment_type: str | None = None  # regular | advance | reversal
+    amount: float | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, max_length=3)
+    transaction_id: str | None = Field(default=None, max_length=120)
+    payment_mode: str | None = Field(default=None, max_length=60)
 
 
 class ChecklistCommentCreate(BaseModel):

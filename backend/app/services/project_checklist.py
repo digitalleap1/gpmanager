@@ -6,6 +6,7 @@ comment, payment request) notifies EVERYONE assigned to the project.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,14 +31,16 @@ ITEMS: list[tuple[str, str]] = [
     ("publish_live_link", "Publish the Blog & Collect Live Link"),
     ("payment", "Payment Process"),
 ]
-STATUSES = {"pending", "in_progress", "completed", "approved", "done"}
+STATUSES = {"pending", "in_progress", "review", "completed", "approved", "done"}
 STATUS_LABELS = {
     "pending": "Pending",
     "in_progress": "In Progress",
+    "review": "In Review",
     "completed": "Completed",
     "approved": "Approved",
     "done": "Done",
 }
+PAYMENT_TYPES = {"regular", "advance", "reversal"}
 
 
 class ProjectChecklistService:
@@ -146,6 +149,11 @@ class ProjectChecklistService:
                 if item.assignee
                 else None
             ),
+            "payment_type": item.payment_type,
+            "amount": float(item.amount) if item.amount is not None else None,
+            "currency": item.currency,
+            "transaction_id": item.transaction_id,
+            "payment_mode": item.payment_mode,
             "timeline": [self._entry_dto(e) for e in item.entries],
         }
 
@@ -183,6 +191,11 @@ class ProjectChecklistService:
         note: str | None = None,
         link: str | None = None,
         assignee_id: uuid.UUID | None = None,
+        payment_type: str | None = None,
+        amount: float | None = None,
+        currency: str | None = None,
+        transaction_id: str | None = None,
+        payment_mode: str | None = None,
     ) -> dict:
         if status not in STATUSES:
             raise BadRequest(f"status must be one of {sorted(STATUSES)}")
@@ -205,11 +218,35 @@ class ProjectChecklistService:
             # Set the relationship object (not just the FK) so the response
             # reflects it — the session has expire_on_commit=False.
             item.assignee = self.db.get(User, assignee_id)
+        # Payment-item details.
+        if payment_type is not None:
+            if payment_type and payment_type not in PAYMENT_TYPES:
+                raise BadRequest(f"payment_type must be one of {sorted(PAYMENT_TYPES)}")
+            item.payment_type = payment_type or None
+        if amount is not None:
+            item.amount = Decimal(str(amount))
+        if currency is not None:
+            item.currency = (currency.upper()[:3] or None)
+        if transaction_id is not None:
+            item.transaction_id = transaction_id or None
+        if payment_mode is not None:
+            item.payment_mode = payment_mode or None
         label = STATUS_LABELS.get(status, status)
 
         detail = f"Status changed from {STATUS_LABELS.get(old, old)} to {label}."
         if link:
             detail += f" Link: {link}"
+        pay_bits: list[str] = []
+        if payment_type and payment_type != "regular":
+            pay_bits.append(f"{payment_type.title()} payment")
+        if amount:
+            pay_bits.append(f"Amount: {amount} {currency or ''}".strip())
+        if transaction_id:
+            pay_bits.append(f"Txn: {transaction_id}")
+        if payment_mode:
+            pay_bits.append(f"Mode: {payment_mode}")
+        if pay_bits:
+            detail += " " + " | ".join(pay_bits)
         self.db.add(
             ProjectChecklistEntry(
                 item_id=item.id, author_id=self.user.id, subject_id=assignee_id,

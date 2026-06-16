@@ -232,6 +232,12 @@ class ProjectChecklistItem(UUIDPrimaryKeyMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     link: Mapped[str | None] = mapped_column(String(700))
+    # Payment-item details (regular / advance / reversal).
+    payment_type: Mapped[str | None] = mapped_column(String(20))
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str | None] = mapped_column(String(3))
+    transaction_id: Mapped[str | None] = mapped_column(String(120))
+    payment_mode: Mapped[str | None] = mapped_column(String(60))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
