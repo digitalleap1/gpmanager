@@ -73,6 +73,7 @@ export default function EditProjectPage({
         target_country_id: project.target_country?.id ?? null,
         assignee_id: project.assignee?.id ?? null,
         team_lead_id: project.team_lead?.id ?? null,
+        member_ids: project.members?.map((m) => m.user_id) ?? [],
         monthly_budget: project.monthly_budget,
         budget_currency: project.budget_currency,
         budget_period: project.budget_period,

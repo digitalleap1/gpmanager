@@ -69,6 +69,11 @@ export function ProjectForm({
   );
   const [assigneeId, setAssigneeId] = useState(initial?.assignee_id ?? "");
   const [teamLeadId, setTeamLeadId] = useState(initial?.team_lead_id ?? "");
+  const [memberIds, setMemberIds] = useState<string[]>(initial?.member_ids ?? []);
+  const toggleMember = (id: string) =>
+    setMemberIds((cur) =>
+      cur.includes(id) ? cur.filter((m) => m !== id) : [...cur, id],
+    );
   const [monthlyBudget, setMonthlyBudget] = useState(
     initial?.monthly_budget != null ? String(initial.monthly_budget) : "",
   );
@@ -154,6 +159,7 @@ export function ProjectForm({
       target_country_id: toNumberOrNull(countryId),
       assignee_id: assigneeId || null,
       team_lead_id: teamLeadId || null,
+      member_ids: memberIds,
       monthly_budget: monthlyBudget === "" ? 0 : Number(monthlyBudget),
       budget_currency: budgetCurrency,
       budget_period: budgetPeriod,
@@ -307,6 +313,41 @@ export function ProjectForm({
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
+          <span className={labelClass}>
+            Project members
+            {memberIds.length > 0 ? ` (${memberIds.length} selected)` : ""}
+          </span>
+          <div className="max-h-44 overflow-y-auto rounded-md border border-input bg-background p-1">
+            {users.length === 0 ? (
+              <p className="px-2 py-2 text-sm text-muted-foreground">
+                No users available.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-2">
+                {users.map((u) => (
+                  <label
+                    key={u.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={memberIds.includes(u.id)}
+                      onChange={() => toggleMember(u.id)}
+                      className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                    />
+                    <span>{u.full_name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Assign one or more members. They&apos;re notified and see the project
+            and its checklist/task updates.
+          </p>
         </div>
 
         <div className="space-y-1.5">

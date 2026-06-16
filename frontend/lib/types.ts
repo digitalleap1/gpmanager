@@ -414,6 +414,7 @@ export interface ProjectCreate {
   target_country_id?: number | null;
   assignee_id?: string | null;
   team_lead_id?: string | null;
+  member_ids?: string[];
   monthly_budget?: number;
   budget_currency?: string;
   budget_period?: BudgetPeriod;
