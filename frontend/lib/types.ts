@@ -397,6 +397,10 @@ export interface ChecklistItem {
   status_label: string;
   position: number;
   timeline: ChecklistEntry[];
+  /** Website / live / payment link recorded against this item, if any. */
+  link: string | null;
+  /** The project member this item is assigned to, if any. */
+  assignee: UserRef | null;
 }
 
 /** A project's full workflow checklist (`GET /projects/{id}/checklist`). */
@@ -409,6 +413,9 @@ export interface Checklist {
   completed_count: number;
   total: number;
   all_done: boolean;
+  /** True when the current user (admin / this project's team lead) may change
+   * item statuses. The item's assignee may also update its own item. */
+  can_manage_status: boolean;
 }
 
 export interface ProjectCreate {

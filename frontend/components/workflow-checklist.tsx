@@ -5,11 +5,14 @@
  *
  * Every project has four fixed workflow items — Find Website, Content Writing,
  * Publish Live Link, Payment. Each item carries a lifecycle status plus an
- * activity timeline of comments and (system) status changes.
+ * activity timeline of comments and (system) status changes, and may record a
+ * link (website / live URL / payment link) and an assigned member.
  *
- *  - Managers (admin / team lead / superuser) can change an item's status and,
- *    on the Payment item, raise a "Request Payment". Everyone else sees the
- *    status read-only.
+ *  - The project lead / an admin (`can_manage_status`), or an item's own
+ *    assignee, may change that item's status via an "Update Status" modal that
+ *    sets status, link, an optional note, and the assignee all at once.
+ *    Everyone else sees the status read-only.
+ *  - On the Payment item managers can additionally raise a "Request Payment".
  *  - Anyone on the project can add comments to any item's timeline.
  *
  * Each item is an expandable card; expanding it reveals the timeline and a
@@ -21,14 +24,16 @@ import {
   Check,
   ChevronDown,
   CreditCard,
+  ExternalLink,
   Globe,
   Link as LinkIcon,
   PenLine,
   Send,
   User as UserIcon,
+  X,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api";
@@ -55,7 +60,7 @@ const ITEM_ICONS: Record<ChecklistItemKey, LucideIcon> = {
   payment: CreditCard,
 };
 
-/** The five statuses + their labels, used to populate the manager `<select>`. */
+/** The five statuses + their labels, used to populate the status `<select>`. */
 const STATUS_OPTIONS: { value: ChecklistStatus; label: string }[] = [
   { value: "pending", label: "Pending" },
   { value: "in_progress", label: "In Progress" },
@@ -64,11 +69,19 @@ const STATUS_OPTIONS: { value: ChecklistStatus; label: string }[] = [
   { value: "done", label: "Done" },
 ];
 
+/** The label shown above the link input, adapted to the item it belongs to. */
+const LINK_LABELS: Record<ChecklistItemKey, string> = {
+  find_website: "Website link",
+  content_writing: "Link",
+  publish_live_link: "Live URL",
+  payment: "Client payment link",
+};
+
 /** Map an unknown error to a friendly, ApiError-aware message. */
 function errMsg(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
     if (err.status === 403) {
-      return "Only team leads and admins can update the checklist status.";
+      return "Only the project lead or an admin can change this status.";
     }
     return err.message;
   }
@@ -85,11 +98,6 @@ function initials(name: string): string {
 
 export function WorkflowChecklist({ projectId }: { projectId: string }) {
   const { user } = useAuth();
-  const isManager =
-    !!user &&
-    (user.is_superuser ||
-      user.roles.includes("admin") ||
-      user.roles.includes("team_lead"));
 
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,14 +124,19 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
     void load();
   }, [load]);
 
-  const handleStatusChange = useCallback(
-    async (itemId: string, status: ChecklistStatus) => {
+  const handleStatusUpdate = useCallback(
+    async (
+      itemId: string,
+      status: ChecklistStatus,
+      opts: { note?: string; link?: string; assigneeId?: string | null },
+    ) => {
       setActionError(null);
       setBusyItemId(itemId);
       try {
-        setChecklist(await setChecklistStatus(projectId, itemId, status));
+        setChecklist(await setChecklistStatus(projectId, itemId, status, opts));
       } catch (err) {
         setActionError(errMsg(err, "Unable to update the item status."));
+        throw err;
       } finally {
         setBusyItemId(null);
       }
@@ -216,19 +229,25 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
               </p>
             )}
             <ol className="space-y-3">
-              {checklist.items.map((item) => (
-                <ChecklistItemCard
-                  key={item.id}
-                  item={item}
-                  members={checklist.members}
-                  isManager={isManager}
-                  busy={busyItemId === item.id}
-                  disabled={busyItemId !== null}
-                  onStatusChange={handleStatusChange}
-                  onAddComment={handleAddComment}
-                  onRequestPayment={handleRequestPayment}
-                />
-              ))}
+              {checklist.items.map((item) => {
+                const canUpdate =
+                  checklist.can_manage_status ||
+                  (!!user && item.assignee?.id === user.id);
+                return (
+                  <ChecklistItemCard
+                    key={item.id}
+                    item={item}
+                    members={checklist.members}
+                    canUpdate={canUpdate}
+                    canManage={checklist.can_manage_status}
+                    busy={busyItemId === item.id}
+                    disabled={busyItemId !== null}
+                    onStatusUpdate={handleStatusUpdate}
+                    onAddComment={handleAddComment}
+                    onRequestPayment={handleRequestPayment}
+                  />
+                );
+              })}
             </ol>
           </>
         )}
@@ -244,19 +263,25 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
 function ChecklistItemCard({
   item,
   members,
-  isManager,
+  canUpdate,
+  canManage,
   busy,
   disabled,
-  onStatusChange,
+  onStatusUpdate,
   onAddComment,
   onRequestPayment,
 }: {
   item: ChecklistItem;
   members: UserRef[];
-  isManager: boolean;
+  canUpdate: boolean;
+  canManage: boolean;
   busy: boolean;
   disabled: boolean;
-  onStatusChange: (itemId: string, status: ChecklistStatus) => void;
+  onStatusUpdate: (
+    itemId: string,
+    status: ChecklistStatus,
+    opts: { note?: string; link?: string; assigneeId?: string | null },
+  ) => Promise<void>;
   onAddComment: (
     itemId: string,
     body: string,
@@ -265,6 +290,7 @@ function ChecklistItemCard({
   onRequestPayment: (itemId: string, note?: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const Icon = ITEM_ICONS[item.item_key] ?? Check;
   const isPayment = item.item_key === "payment";
 
@@ -285,12 +311,21 @@ function ChecklistItemCard({
             <span className="block truncate text-sm font-medium text-foreground">
               {item.title}
             </span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              {item.timeline.length === 0
-                ? "No activity yet"
-                : `${item.timeline.length} update${
-                    item.timeline.length === 1 ? "" : "s"
-                  }`}
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              <span>
+                {item.timeline.length === 0
+                  ? "No activity yet"
+                  : `${item.timeline.length} update${
+                      item.timeline.length === 1 ? "" : "s"
+                    }`}
+              </span>
+              {item.assignee && (
+                <span className="inline-flex items-center gap-1">
+                  <span aria-hidden="true">·</span>
+                  <UserIcon className="h-3 w-3" />
+                  {item.assignee.full_name}
+                </span>
+              )}
             </span>
           </span>
           <ChevronDown
@@ -301,43 +336,50 @@ function ChecklistItemCard({
           />
         </button>
 
-        {/* Status control */}
-        <div className="flex items-center gap-3 sm:justify-end">
-          {isManager ? (
-            <select
-              value={item.status}
+        {/* Status badge (+ Update button when allowed) */}
+        <div className="flex items-center gap-2 sm:justify-end">
+          <StatusBadge
+            status={item.status}
+            label={item.status_label}
+            busy={busy}
+          />
+          {canUpdate && (
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
               disabled={disabled}
-              aria-label={`Status for ${item.title}`}
-              onChange={(e) =>
-                onStatusChange(item.id, e.target.value as ChecklistStatus)
-              }
-              className="w-full max-w-[12rem] rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 sm:w-auto"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
             >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <StatusBadge
-              status={item.status}
-              label={item.status_label}
-              busy={busy}
-            />
-          )}
-          {isManager && busy && (
-            <span className="text-xs text-muted-foreground">Saving…</span>
+              <PenLine className="h-3.5 w-3.5" />
+              Update Status
+            </button>
           )}
         </div>
       </div>
 
+      {/* Link row (collapsed header context) */}
+      {item.link && (
+        <div className="-mt-1 px-4 pb-3">
+          <ItemLink link={item.link} />
+        </div>
+      )}
+
       {/* Expanded body: timeline + comment box (+ request payment) */}
       {expanded && (
         <div className="border-t border-border px-4 py-4">
+          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              Assigned:{" "}
+              <span className="font-medium text-foreground">
+                {item.assignee ? item.assignee.full_name : "Unassigned"}
+              </span>
+            </span>
+            {item.link && <ItemLink link={item.link} />}
+          </div>
+
           <Timeline item={item} />
 
-          {isManager && isPayment && (
+          {canManage && isPayment && (
             <RequestPaymentControl
               busy={busy}
               disabled={disabled}
@@ -355,12 +397,234 @@ function ChecklistItemCard({
           />
         </div>
       )}
+
+      {modalOpen && (
+        <UpdateStatusModal
+          item={item}
+          members={members}
+          busy={busy}
+          disabled={disabled}
+          onClose={() => setModalOpen(false)}
+          onSubmit={async (status, opts) => {
+            await onStatusUpdate(item.id, status, opts);
+            setModalOpen(false);
+          }}
+        />
+      )}
     </li>
   );
 }
 
 /* ------------------------------------------------------------------ *
- * Status badge (read-only view for non-managers)
+ * Item link chip (truncated, opens in a new tab)
+ * ------------------------------------------------------------------ */
+
+function ItemLink({ link }: { link: string }) {
+  return (
+    <a
+      href={link}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={link}
+      className="inline-flex max-w-full items-center gap-1 text-xs font-medium text-primary hover:underline"
+    >
+      <ExternalLink className="h-3 w-3 shrink-0" />
+      <span className="truncate">{link}</span>
+    </a>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Update Status modal
+ * ------------------------------------------------------------------ */
+
+function UpdateStatusModal({
+  item,
+  members,
+  busy,
+  disabled,
+  onClose,
+  onSubmit,
+}: {
+  item: ChecklistItem;
+  members: UserRef[];
+  busy: boolean;
+  disabled: boolean;
+  onClose: () => void;
+  onSubmit: (
+    status: ChecklistStatus,
+    opts: { note?: string; link?: string; assigneeId?: string | null },
+  ) => Promise<void>;
+}) {
+  const [status, setStatus] = useState<ChecklistStatus>(item.status);
+  const [link, setLink] = useState(item.link ?? "");
+  const [note, setNote] = useState("");
+  const [assigneeId, setAssigneeId] = useState(item.assignee?.id ?? "");
+  const statusRef = useRef<HTMLSelectElement>(null);
+
+  // Close on Escape, and autofocus the status select on open.
+  useEffect(() => {
+    statusRef.current?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const linkLabel = LINK_LABELS[item.item_key] ?? "Link";
+  const fieldCls =
+    "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50";
+
+  async function handleSubmit() {
+    try {
+      await onSubmit(status, {
+        note: note.trim() || undefined,
+        link,
+        assigneeId: assigneeId || null,
+      });
+    } catch {
+      // Error is surfaced by the parent; keep the modal open with the draft.
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-[#1A1F4D]/40 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Update ${item.title}`}
+        className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-card shadow-xl"
+      >
+        <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-5 py-4">
+          <h2 className="truncate text-base font-semibold text-[#1A1F4D]">
+            Update — {item.title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={disabled}
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="checklist-status"
+              className="block text-xs font-medium text-muted-foreground"
+            >
+              Status
+            </label>
+            <select
+              id="checklist-status"
+              ref={statusRef}
+              value={status}
+              disabled={disabled}
+              onChange={(e) => setStatus(e.target.value as ChecklistStatus)}
+              className={fieldCls}
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="checklist-link"
+              className="block text-xs font-medium text-muted-foreground"
+            >
+              {linkLabel}
+            </label>
+            <input
+              id="checklist-link"
+              type="url"
+              value={link}
+              disabled={disabled}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="https://…"
+              className={fieldCls}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="checklist-note"
+              className="block text-xs font-medium text-muted-foreground"
+            >
+              Note / comment (optional)
+            </label>
+            <textarea
+              id="checklist-note"
+              value={note}
+              disabled={disabled}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              placeholder="Add a note for the timeline…"
+              className={fieldCls}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="checklist-assignee"
+              className="block text-xs font-medium text-muted-foreground"
+            >
+              Assign member
+            </label>
+            <select
+              id="checklist-assignee"
+              value={assigneeId}
+              disabled={disabled}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className={fieldCls}
+            >
+              <option value="">— Unassigned —</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-card px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={disabled}
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={disabled}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? "Updating…" : "Update"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Status badge
  * ------------------------------------------------------------------ */
 
 const STATUS_BADGE_CLS: Record<ChecklistStatus, string> = {
@@ -396,9 +660,7 @@ function StatusBadge({
 
 function Timeline({ item }: { item: ChecklistItem }) {
   if (item.timeline.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">No activity yet.</p>
-    );
+    return <p className="text-sm text-muted-foreground">No activity yet.</p>;
   }
 
   return (

@@ -212,17 +212,37 @@ export function getChecklist(projectId: string): Promise<Checklist> {
 }
 
 /**
- * Set the status of one checklist item. Managers only — a 403 is surfaced as an
- * `ApiError`. Returns the updated checklist.
+ * Update one checklist item in a single submit: its status plus, optionally, a
+ * note for the timeline, the item's link, and its assignee. Allowed for the
+ * project lead / an admin, or the item's own assignee — a 403 is surfaced as an
+ * `ApiError`. Empty/undefined optional fields are omitted from the body.
+ * Returns the updated checklist.
  */
 export function setChecklistStatus(
   projectId: string,
   itemId: string,
   status: ChecklistStatus,
+  opts?: { note?: string; link?: string; assigneeId?: string | null },
 ): Promise<Checklist> {
+  const body: {
+    status: ChecklistStatus;
+    note?: string;
+    link?: string;
+    assignee_id?: string | null;
+  } = { status };
+
+  const note = opts?.note?.trim();
+  if (note) body.note = note;
+
+  // Send `link` whenever it's provided (even when blank, to allow clearing it).
+  if (opts?.link !== undefined) body.link = opts.link.trim();
+
+  // Send `assignee_id` whenever the caller passed the key — `null` clears it.
+  if (opts && "assigneeId" in opts) body.assignee_id = opts.assigneeId ?? null;
+
   return api.put<Checklist>(
     `/projects/${projectId}/checklist/${itemId}/status`,
-    { status },
+    body,
   );
 }
 
