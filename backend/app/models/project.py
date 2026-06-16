@@ -209,6 +209,59 @@ class ProjectWorkflowStage(UUIDPrimaryKeyMixin, Base):
     assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id], lazy="joined")
 
 
+class ProjectChecklistItem(UUIDPrimaryKeyMixin, Base):
+    """Auto-generated per-project workflow checklist item with its own status +
+    comments/activity timeline (Find a Website / Content Writing / Publish & Live
+    Link / Payment)."""
+
+    __tablename__ = "project_checklist_items"
+    __table_args__ = (
+        UniqueConstraint("project_id", "item_key", name="uq_project_checklist_item"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    item_key: Mapped[str] = mapped_column(String(30), nullable=False)
+    title: Mapped[str] = mapped_column(String(140), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    position: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    project: Mapped[Project] = relationship()
+    entries: Mapped[list[ProjectChecklistEntry]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+        order_by="ProjectChecklistEntry.created_at",
+    )
+
+
+class ProjectChecklistEntry(UUIDPrimaryKeyMixin, Base):
+    """One row in a checklist item's timeline: a user comment OR a status change."""
+
+    __tablename__ = "project_checklist_entries"
+
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("project_checklist_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    kind: Mapped[str] = mapped_column(String(20), default="comment", nullable=False)  # comment|status
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    item: Mapped[ProjectChecklistItem] = relationship(back_populates="entries")
+    author: Mapped[User | None] = relationship(foreign_keys=[author_id], lazy="joined")
+
+
 class ProjectComment(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "project_comments"
 

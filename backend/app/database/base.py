@@ -43,6 +43,8 @@ from app.models.payment import (  # noqa: F401
 from app.models.project import (  # noqa: F401
     BudgetAdjustment,
     Project,
+    ProjectChecklistEntry,
+    ProjectChecklistItem,
     ProjectComment,
     ProjectMember,
     ProjectMonthlyBudget,

@@ -19,7 +19,10 @@ from app.schemas.project import (
     BulkAssignResult,
     BulkDeleteRequest,
     BulkDeleteResult,
+    ChecklistCommentCreate,
+    ChecklistPaymentRequest,
     ChecklistRead,
+    ChecklistStatusUpdate,
     CommentCreate,
     CommentRead,
     MemberCreate,
@@ -29,13 +32,12 @@ from app.schemas.project import (
     ProjectListItem,
     ProjectOverview,
     ProjectUpdate,
-    StageAssign,
     WebsiteUsedItem,
 )
 from app.services.goal import GoalService
 from app.services.project import ProjectService
+from app.services.project_checklist import ProjectChecklistService
 from app.services.project_hub import ProjectHubService
-from app.services.project_workflow import ProjectWorkflowService
 
 router = APIRouter()
 
@@ -266,16 +268,31 @@ def set_budget(
     return GoalService(db, user).set_budget(project_id, year, month, body.budget_amount)
 
 
-# --- simple workflow checklist (Website Review / Content Writing / Payment) ---
+# --- workflow checklist (Find a Website / Content Writing / Publish & Live Link / Payment) ---
 @router.get("/{project_id}/checklist", response_model=ChecklistRead)
 def get_checklist(project_id: uuid.UUID, user: CurrentUser, db: DbSession) -> ChecklistRead:
-    return ChecklistRead(**ProjectWorkflowService(db, user).checklist(project_id))
+    return ChecklistRead(**ProjectChecklistService(db, user).get(project_id))
 
 
-@router.put("/{project_id}/checklist/{stage_key}", response_model=ChecklistRead)
-def assign_checklist_stage(
-    project_id: uuid.UUID, stage_key: str, body: StageAssign, user: CurrentUser, db: DbSession
+@router.put("/{project_id}/checklist/{item_id}/status", response_model=ChecklistRead)
+def set_checklist_status(
+    project_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistStatusUpdate,
+    user: CurrentUser, db: DbSession,
 ) -> ChecklistRead:
-    return ChecklistRead(
-        **ProjectWorkflowService(db, user).assign(project_id, stage_key, body.assignee_id)
-    )
+    return ChecklistRead(**ProjectChecklistService(db, user).set_status(project_id, item_id, body.status))
+
+
+@router.post("/{project_id}/checklist/{item_id}/comments", response_model=ChecklistRead)
+def add_checklist_comment(
+    project_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistCommentCreate,
+    user: CurrentUser, db: DbSession,
+) -> ChecklistRead:
+    return ChecklistRead(**ProjectChecklistService(db, user).add_comment(project_id, item_id, body.body))
+
+
+@router.post("/{project_id}/checklist/{item_id}/request-payment", response_model=ChecklistRead)
+def request_checklist_payment(
+    project_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistPaymentRequest,
+    user: CurrentUser, db: DbSession,
+) -> ChecklistRead:
+    return ChecklistRead(**ProjectChecklistService(db, user).request_payment(project_id, item_id, body.note))

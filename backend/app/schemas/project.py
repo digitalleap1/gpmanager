@@ -131,26 +131,43 @@ class BulkDeleteResult(BaseModel):
     skipped: int
 
 
-class StageAssign(BaseModel):
-    assignee_id: uuid.UUID | None = None
+class ChecklistEntryRead(BaseModel):
+    id: uuid.UUID
+    kind: str  # comment | status
+    body: str
+    author: UserRef | None
+    created_at: datetime
 
 
-class WorkflowStageRead(BaseModel):
-    stage_key: str
-    label: str
-    assignee: UserRef | None
-    task_id: uuid.UUID | None
-    task_status: str | None
-    done: bool
+class ChecklistItemRead(BaseModel):
+    id: uuid.UUID
+    item_key: str
+    title: str
+    status: str
+    status_label: str
+    position: int
+    timeline: list[ChecklistEntryRead]
 
 
 class ChecklistRead(BaseModel):
     project_id: uuid.UUID
     project_name: str
-    stages: list[WorkflowStageRead]
-    all_done: bool
+    items: list[ChecklistItemRead]
     completed_count: int
     total: int
+    all_done: bool
+
+
+class ChecklistStatusUpdate(BaseModel):
+    status: str
+
+
+class ChecklistCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class ChecklistPaymentRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
 
 
 class ProjectOverview(BaseModel):
