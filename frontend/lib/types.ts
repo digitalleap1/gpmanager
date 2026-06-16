@@ -383,6 +383,8 @@ export interface ChecklistEntry {
   kind: "comment" | "status";
   body: string;
   author: UserRef | null;
+  /** The project member this comment is about (who approved / wrote / paid). */
+  subject: UserRef | null;
   created_at: string;
 }
 
@@ -402,6 +404,8 @@ export interface Checklist {
   project_id: string;
   project_name: string;
   items: ChecklistItem[];
+  /** Members of the project — used to pick the "subject" on a comment. */
+  members: UserRef[];
   completed_count: number;
   total: number;
   all_done: boolean;

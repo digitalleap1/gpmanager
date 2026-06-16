@@ -25,6 +25,7 @@ import {
   Link as LinkIcon,
   PenLine,
   Send,
+  User as UserIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -36,6 +37,7 @@ import type {
   ChecklistItem,
   ChecklistItemKey,
   ChecklistStatus,
+  UserRef,
 } from "@/lib/types";
 import { cn, relativeTime } from "@/lib/utils";
 import {
@@ -130,11 +132,13 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
   );
 
   const handleAddComment = useCallback(
-    async (itemId: string, body: string) => {
+    async (itemId: string, body: string, subjectId?: string | null) => {
       setActionError(null);
       setBusyItemId(itemId);
       try {
-        setChecklist(await addChecklistComment(projectId, itemId, body));
+        setChecklist(
+          await addChecklistComment(projectId, itemId, body, subjectId),
+        );
       } catch (err) {
         setActionError(errMsg(err, "Unable to add the comment."));
         throw err;
@@ -216,6 +220,7 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
                 <ChecklistItemCard
                   key={item.id}
                   item={item}
+                  members={checklist.members}
                   isManager={isManager}
                   busy={busyItemId === item.id}
                   disabled={busyItemId !== null}
@@ -238,6 +243,7 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
 
 function ChecklistItemCard({
   item,
+  members,
   isManager,
   busy,
   disabled,
@@ -246,11 +252,16 @@ function ChecklistItemCard({
   onRequestPayment,
 }: {
   item: ChecklistItem;
+  members: UserRef[];
   isManager: boolean;
   busy: boolean;
   disabled: boolean;
   onStatusChange: (itemId: string, status: ChecklistStatus) => void;
-  onAddComment: (itemId: string, body: string) => Promise<void>;
+  onAddComment: (
+    itemId: string,
+    body: string,
+    subjectId?: string | null,
+  ) => Promise<void>;
   onRequestPayment: (itemId: string, note?: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -337,7 +348,10 @@ function ChecklistItemCard({
           <CommentBox
             busy={busy}
             disabled={disabled}
-            onSubmit={(body) => onAddComment(item.id, body)}
+            members={members}
+            onSubmit={(body, subjectId) =>
+              onAddComment(item.id, body, subjectId)
+            }
           />
         </div>
       )}
@@ -416,11 +430,17 @@ function Timeline({ item }: { item: ChecklistItem }) {
               {initials(name)}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2">
+              <div className="flex flex-wrap items-baseline gap-2">
                 <p className="text-sm font-medium text-foreground">{name}</p>
                 <span className="text-xs text-muted-foreground">
                   {relativeTime(entry.created_at)}
                 </span>
+                {entry.subject && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    <UserIcon className="h-3 w-3" />
+                    {entry.subject.full_name}
+                  </span>
+                )}
               </div>
               <p className="mt-1 whitespace-pre-wrap break-words text-sm">
                 {entry.body}
@@ -440,20 +460,24 @@ function Timeline({ item }: { item: ChecklistItem }) {
 function CommentBox({
   busy,
   disabled,
+  members,
   onSubmit,
 }: {
   busy: boolean;
   disabled: boolean;
-  onSubmit: (body: string) => Promise<void>;
+  members: UserRef[];
+  onSubmit: (body: string, subjectId?: string | null) => Promise<void>;
 }) {
   const [body, setBody] = useState("");
+  const [subjectId, setSubjectId] = useState("");
 
   async function handleSend() {
     const trimmed = body.trim();
     if (trimmed === "") return;
     try {
-      await onSubmit(trimmed);
+      await onSubmit(trimmed, subjectId || null);
       setBody("");
+      setSubjectId("");
     } catch {
       // Error is surfaced by the parent; keep the draft so it isn't lost.
     }
@@ -469,7 +493,26 @@ function CommentBox({
         disabled={disabled}
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
       />
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {members.length > 0 && (
+          <label className="mr-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="whitespace-nowrap">Member:</span>
+            <select
+              value={subjectId}
+              onChange={(e) => setSubjectId(e.target.value)}
+              disabled={disabled}
+              aria-label="Member this comment is about"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            >
+              <option value="">— none —</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button
           type="button"
           onClick={() => void handleSend()}

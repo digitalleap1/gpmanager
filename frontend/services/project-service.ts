@@ -234,10 +234,11 @@ export function addChecklistComment(
   projectId: string,
   itemId: string,
   body: string,
+  subjectId?: string | null,
 ): Promise<Checklist> {
   return api.post<Checklist>(
     `/projects/${projectId}/checklist/${itemId}/comments`,
-    { body },
+    subjectId ? { body, subject_id: subjectId } : { body },
   );
 }
 
