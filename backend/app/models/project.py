@@ -252,6 +252,10 @@ class ProjectChecklistEntry(UUIDPrimaryKeyMixin, Base):
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
+    # The project member this entry is ABOUT (who approved / wrote content / paid).
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     kind: Mapped[str] = mapped_column(String(20), default="comment", nullable=False)  # comment|status
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -260,6 +264,7 @@ class ProjectChecklistEntry(UUIDPrimaryKeyMixin, Base):
 
     item: Mapped[ProjectChecklistItem] = relationship(back_populates="entries")
     author: Mapped[User | None] = relationship(foreign_keys=[author_id], lazy="joined")
+    subject: Mapped[User | None] = relationship(foreign_keys=[subject_id], lazy="joined")
 
 
 class ProjectComment(UUIDPrimaryKeyMixin, Base):

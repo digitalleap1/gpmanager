@@ -122,6 +122,9 @@ class ProjectChecklistService:
             "author": (
                 {"id": e.author.id, "full_name": e.author.full_name} if e.author else None
             ),
+            "subject": (
+                {"id": e.subject.id, "full_name": e.subject.full_name} if e.subject else None
+            ),
             "created_at": e.created_at,
         }
 
@@ -143,10 +146,18 @@ class ProjectChecklistService:
         # Re-load with entries.
         item_dtos = [self._item_dto(self.db.get(ProjectChecklistItem, i.id)) for i in items]
         done_count = sum(1 for i in items if i.status in ("done", "completed", "approved"))
+        # The project's members (for the "who did this" picker on comments).
+        member_ids = self._audience(p)
+        members = (
+            self.db.scalars(select(User).where(User.id.in_(member_ids))).all()
+            if member_ids
+            else []
+        )
         return {
             "project_id": p.id,
             "project_name": p.name,
             "items": item_dtos,
+            "members": [{"id": u.id, "full_name": u.full_name} for u in members],
             "completed_count": done_count,
             "total": len(items),
             "all_done": done_count == len(items),
@@ -178,12 +189,19 @@ class ProjectChecklistService:
         self.db.commit()
         return self.get(project_id)
 
-    def add_comment(self, project_id: uuid.UUID, item_id: uuid.UUID, body: str) -> dict:
+    def add_comment(
+        self, project_id: uuid.UUID, item_id: uuid.UUID, body: str,
+        subject_id: uuid.UUID | None = None,
+    ) -> dict:
         p = self._project(project_id)
         item = self._item(p, item_id)
+        # subject_id must be someone actually on the project.
+        if subject_id is not None and subject_id not in self._audience(p):
+            raise BadRequest("The selected member is not on this project")
         self.db.add(
             ProjectChecklistEntry(
-                item_id=item.id, author_id=self.user.id, kind="comment", body=body
+                item_id=item.id, author_id=self.user.id, subject_id=subject_id,
+                kind="comment", body=body,
             )
         )
         self.activity.record(
@@ -191,8 +209,14 @@ class ProjectChecklistService:
             module="project", entity_type="project", entity_id=p.id,
             new={"name": p.name, "item": item.item_key},
         )
+        subject_note = ""
+        if subject_id is not None:
+            subject = self.db.get(User, subject_id)
+            if subject:
+                subject_note = f" (re: {subject.full_name})"
         self._broadcast(
-            p, item, body=f'{self.user.full_name} commented on "{item.title}": {body[:100]}'
+            p, item,
+            body=f'{self.user.full_name} commented on "{item.title}"{subject_note}: {body[:100]}',
         )
         self.db.commit()
         return self.get(project_id)

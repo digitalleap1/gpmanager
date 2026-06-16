@@ -139,6 +139,7 @@ class ChecklistEntryRead(BaseModel):
     kind: str  # comment | status
     body: str
     author: UserRef | None
+    subject: UserRef | None
     created_at: datetime
 
 
@@ -156,6 +157,7 @@ class ChecklistRead(BaseModel):
     project_id: uuid.UUID
     project_name: str
     items: list[ChecklistItemRead]
+    members: list[UserRef]
     completed_count: int
     total: int
     all_done: bool
@@ -167,6 +169,8 @@ class ChecklistStatusUpdate(BaseModel):
 
 class ChecklistCommentCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+    # Optional: the project member this comment is about (who approved / wrote / paid).
+    subject_id: uuid.UUID | None = None
 
 
 class ChecklistPaymentRequest(BaseModel):

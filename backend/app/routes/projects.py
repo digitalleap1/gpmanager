@@ -287,7 +287,11 @@ def add_checklist_comment(
     project_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistCommentCreate,
     user: CurrentUser, db: DbSession,
 ) -> ChecklistRead:
-    return ChecklistRead(**ProjectChecklistService(db, user).add_comment(project_id, item_id, body.body))
+    return ChecklistRead(
+        **ProjectChecklistService(db, user).add_comment(
+            project_id, item_id, body.body, body.subject_id
+        )
+    )
 
 
 @router.post("/{project_id}/checklist/{item_id}/request-payment", response_model=ChecklistRead)
