@@ -372,6 +372,7 @@ export type ChecklistItemKey =
 export type ChecklistStatus =
   | "pending"
   | "in_progress"
+  | "review"
   | "completed"
   | "approved"
   | "done";
@@ -401,6 +402,12 @@ export interface ChecklistItem {
   link: string | null;
   /** The project member this item is assigned to, if any. */
   assignee: UserRef | null;
+  /** Payment-only fields (set only on the `payment` item). */
+  payment_type: string | null;
+  amount: number | null;
+  currency: string | null;
+  transaction_id: string | null;
+  payment_mode: string | null;
 }
 
 /** A project's full workflow checklist (`GET /projects/{id}/checklist`). */

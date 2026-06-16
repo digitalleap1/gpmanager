@@ -5,19 +5,18 @@
  *
  * Every project has four fixed workflow items — Find Website, Content Writing,
  * Publish Live Link, Payment. Each item carries a lifecycle status plus an
- * activity timeline of comments and (system) status changes, and may record a
+ * activity timeline of (system) status changes and notes, and may record a
  * link (website / live URL / payment link) and an assigned member.
  *
  *  - The project lead / an admin (`can_manage_status`), or an item's own
  *    assignee, may change that item's status via an "Update Status" modal that
  *    sets status, link, an optional note, and the assignee all at once.
  *    Everyone else sees the status read-only.
- *  - On the Payment item managers can additionally raise a "Request Payment".
- *  - Anyone on the project can add comments to any item's timeline.
+ *  - The Payment item additionally captures amount + currency, payment type,
+ *    transaction id and payment mode through that same modal.
  *
- * Each item is an expandable card; expanding it reveals the timeline and a
- * comment box. After any mutation we replace local state with the `Checklist`
- * the backend returns.
+ * Each item is an expandable card; expanding it reveals the timeline. After any
+ * mutation we replace local state with the `Checklist` the backend returns.
  */
 
 import {
@@ -28,7 +27,6 @@ import {
   Globe,
   Link as LinkIcon,
   PenLine,
-  Send,
   User as UserIcon,
   X,
   type LucideIcon,
@@ -42,15 +40,37 @@ import type {
   ChecklistItem,
   ChecklistItemKey,
   ChecklistStatus,
+  CurrencyRef,
   UserRef,
 } from "@/lib/types";
 import { cn, relativeTime } from "@/lib/utils";
-import {
-  addChecklistComment,
-  getChecklist,
-  requestChecklistPayment,
-  setChecklistStatus,
-} from "@/services/project-service";
+import { getChecklist, setChecklistStatus } from "@/services/project-service";
+import { getCurrencies } from "@/services/lookup-service";
+
+/** Opts carried into a status update, including payment-only fields. */
+interface StatusUpdateOpts {
+  note?: string;
+  link?: string;
+  assigneeId?: string | null;
+  paymentType?: string;
+  amount?: number;
+  currency?: string;
+  transactionId?: string;
+  paymentMode?: string;
+}
+
+/** Payment-type options shown only on the payment item. */
+const PAYMENT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "regular", label: "Regular" },
+  { value: "advance", label: "Advance" },
+  { value: "reversal", label: "Reversal" },
+];
+
+/** Badge style for a payment type (regular has no badge). */
+const PAYMENT_TYPE_BADGE_CLS: Record<string, string> = {
+  advance: "bg-blue-100 text-blue-700",
+  reversal: "bg-orange-100 text-orange-700",
+};
 
 /** Per-item decoration (icon) keyed by item_key, with a sensible fallback. */
 const ITEM_ICONS: Record<ChecklistItemKey, LucideIcon> = {
@@ -60,10 +80,11 @@ const ITEM_ICONS: Record<ChecklistItemKey, LucideIcon> = {
   payment: CreditCard,
 };
 
-/** The five statuses + their labels, used to populate the status `<select>`. */
+/** The statuses + their labels, used to populate the status `<select>`. */
 const STATUS_OPTIONS: { value: ChecklistStatus; label: string }[] = [
   { value: "pending", label: "Pending" },
   { value: "in_progress", label: "In Progress" },
+  { value: "review", label: "In Review" },
   { value: "completed", label: "Completed" },
   { value: "approved", label: "Approved" },
   { value: "done", label: "Done" },
@@ -125,51 +146,13 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
   }, [load]);
 
   const handleStatusUpdate = useCallback(
-    async (
-      itemId: string,
-      status: ChecklistStatus,
-      opts: { note?: string; link?: string; assigneeId?: string | null },
-    ) => {
+    async (itemId: string, status: ChecklistStatus, opts: StatusUpdateOpts) => {
       setActionError(null);
       setBusyItemId(itemId);
       try {
         setChecklist(await setChecklistStatus(projectId, itemId, status, opts));
       } catch (err) {
         setActionError(errMsg(err, "Unable to update the item status."));
-        throw err;
-      } finally {
-        setBusyItemId(null);
-      }
-    },
-    [projectId],
-  );
-
-  const handleAddComment = useCallback(
-    async (itemId: string, body: string, subjectId?: string | null) => {
-      setActionError(null);
-      setBusyItemId(itemId);
-      try {
-        setChecklist(
-          await addChecklistComment(projectId, itemId, body, subjectId),
-        );
-      } catch (err) {
-        setActionError(errMsg(err, "Unable to add the comment."));
-        throw err;
-      } finally {
-        setBusyItemId(null);
-      }
-    },
-    [projectId],
-  );
-
-  const handleRequestPayment = useCallback(
-    async (itemId: string, note?: string) => {
-      setActionError(null);
-      setBusyItemId(itemId);
-      try {
-        setChecklist(await requestChecklistPayment(projectId, itemId, note));
-      } catch (err) {
-        setActionError(errMsg(err, "Unable to request payment."));
         throw err;
       } finally {
         setBusyItemId(null);
@@ -239,12 +222,9 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
                     item={item}
                     members={checklist.members}
                     canUpdate={canUpdate}
-                    canManage={checklist.can_manage_status}
                     busy={busyItemId === item.id}
                     disabled={busyItemId !== null}
                     onStatusUpdate={handleStatusUpdate}
-                    onAddComment={handleAddComment}
-                    onRequestPayment={handleRequestPayment}
                   />
                 );
               })}
@@ -264,35 +244,31 @@ function ChecklistItemCard({
   item,
   members,
   canUpdate,
-  canManage,
   busy,
   disabled,
   onStatusUpdate,
-  onAddComment,
-  onRequestPayment,
 }: {
   item: ChecklistItem;
   members: UserRef[];
   canUpdate: boolean;
-  canManage: boolean;
   busy: boolean;
   disabled: boolean;
   onStatusUpdate: (
     itemId: string,
     status: ChecklistStatus,
-    opts: { note?: string; link?: string; assigneeId?: string | null },
+    opts: StatusUpdateOpts,
   ) => Promise<void>;
-  onAddComment: (
-    itemId: string,
-    body: string,
-    subjectId?: string | null,
-  ) => Promise<void>;
-  onRequestPayment: (itemId: string, note?: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const Icon = ITEM_ICONS[item.item_key] ?? Check;
   const isPayment = item.item_key === "payment";
+  const hasPaymentDetails =
+    isPayment &&
+    (item.amount != null ||
+      !!item.payment_type ||
+      !!item.transaction_id ||
+      !!item.payment_mode);
 
   return (
     <li className="overflow-hidden rounded-lg border border-border bg-background/50">
@@ -364,7 +340,14 @@ function ChecklistItemCard({
         </div>
       )}
 
-      {/* Expanded body: timeline + comment box (+ request payment) */}
+      {/* Payment summary chips (collapsed header context) */}
+      {hasPaymentDetails && (
+        <div className="-mt-1 px-4 pb-3">
+          <PaymentChips item={item} />
+        </div>
+      )}
+
+      {/* Expanded body: details + timeline */}
       {expanded && (
         <div className="border-t border-border px-4 py-4">
           <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -377,24 +360,9 @@ function ChecklistItemCard({
             {item.link && <ItemLink link={item.link} />}
           </div>
 
+          {hasPaymentDetails && <PaymentDetails item={item} />}
+
           <Timeline item={item} />
-
-          {canManage && isPayment && (
-            <RequestPaymentControl
-              busy={busy}
-              disabled={disabled}
-              onRequest={(note) => onRequestPayment(item.id, note)}
-            />
-          )}
-
-          <CommentBox
-            busy={busy}
-            disabled={disabled}
-            members={members}
-            onSubmit={(body, subjectId) =>
-              onAddComment(item.id, body, subjectId)
-            }
-          />
         </div>
       )}
 
@@ -453,14 +421,49 @@ function UpdateStatusModal({
   onClose: () => void;
   onSubmit: (
     status: ChecklistStatus,
-    opts: { note?: string; link?: string; assigneeId?: string | null },
+    opts: StatusUpdateOpts,
   ) => Promise<void>;
 }) {
+  const isPayment = item.item_key === "payment";
+
   const [status, setStatus] = useState<ChecklistStatus>(item.status);
   const [link, setLink] = useState(item.link ?? "");
   const [note, setNote] = useState("");
   const [assigneeId, setAssigneeId] = useState(item.assignee?.id ?? "");
   const statusRef = useRef<HTMLSelectElement>(null);
+
+  // Payment-only fields.
+  const [paymentType, setPaymentType] = useState(item.payment_type ?? "regular");
+  const [amount, setAmount] = useState(
+    item.amount != null ? String(item.amount) : "",
+  );
+  const [currency, setCurrency] = useState(item.currency ?? "USD");
+  const [transactionId, setTransactionId] = useState(item.transaction_id ?? "");
+  const [paymentMode, setPaymentMode] = useState(item.payment_mode ?? "");
+
+  const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
+  const [currencyError, setCurrencyError] = useState<string | null>(null);
+
+  // Load currencies for the payment item only.
+  useEffect(() => {
+    if (!isPayment) return;
+    let active = true;
+    void (async () => {
+      try {
+        const list = await getCurrencies();
+        if (active) setCurrencies(list);
+      } catch (err) {
+        if (active) {
+          setCurrencyError(
+            err instanceof ApiError ? err.message : "Unable to load currencies.",
+          );
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isPayment]);
 
   // Close on Escape, and autofocus the status select on open.
   useEffect(() => {
@@ -476,12 +479,30 @@ function UpdateStatusModal({
   const fieldCls =
     "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50";
 
+  // No assignee picker once an item is done.
+  const showAssignee = status !== "done";
+
   async function handleSubmit() {
+    const trimmedAmount = amount.trim();
+    const parsedAmount = trimmedAmount === "" ? undefined : Number(trimmedAmount);
     try {
       await onSubmit(status, {
         note: note.trim() || undefined,
         link,
-        assigneeId: assigneeId || null,
+        // When the assignee field is hidden (status done), don't change it.
+        assigneeId: showAssignee ? assigneeId || null : undefined,
+        ...(isPayment
+          ? {
+              paymentType,
+              amount:
+                parsedAmount !== undefined && Number.isFinite(parsedAmount)
+                  ? parsedAmount
+                  : undefined,
+              currency,
+              transactionId: transactionId.trim() || undefined,
+              paymentMode: paymentMode.trim() || undefined,
+            }
+          : {}),
       });
     } catch {
       // Error is surfaced by the parent; keep the modal open with the draft.
@@ -558,6 +579,119 @@ function UpdateStatusModal({
             />
           </div>
 
+          {isPayment && (
+            <>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="checklist-payment-type"
+                  className="block text-xs font-medium text-muted-foreground"
+                >
+                  Payment type
+                </label>
+                <select
+                  id="checklist-payment-type"
+                  value={paymentType}
+                  disabled={disabled}
+                  onChange={(e) => setPaymentType(e.target.value)}
+                  className={fieldCls}
+                >
+                  {PAYMENT_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 space-y-1.5">
+                  <label
+                    htmlFor="checklist-amount"
+                    className="block text-xs font-medium text-muted-foreground"
+                  >
+                    Amount
+                  </label>
+                  <input
+                    id="checklist-amount"
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={amount}
+                    disabled={disabled}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    className={fieldCls}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="checklist-currency"
+                    className="block text-xs font-medium text-muted-foreground"
+                  >
+                    Currency
+                  </label>
+                  <select
+                    id="checklist-currency"
+                    value={currency}
+                    disabled={disabled}
+                    onChange={(e) => setCurrency(e.target.value)}
+                    className={fieldCls}
+                  >
+                    {currencies.length === 0 ? (
+                      <option value={currency}>{currency}</option>
+                    ) : (
+                      currencies.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.code}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
+              {currencyError && (
+                <p className="text-xs text-destructive">{currencyError}</p>
+              )}
+
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="checklist-transaction-id"
+                  className="block text-xs font-medium text-muted-foreground"
+                >
+                  Transaction ID
+                </label>
+                <input
+                  id="checklist-transaction-id"
+                  type="text"
+                  value={transactionId}
+                  disabled={disabled}
+                  onChange={(e) => setTransactionId(e.target.value)}
+                  placeholder="e.g. TXN-12345"
+                  className={fieldCls}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="checklist-payment-mode"
+                  className="block text-xs font-medium text-muted-foreground"
+                >
+                  Payment mode
+                </label>
+                <input
+                  id="checklist-payment-mode"
+                  type="text"
+                  value={paymentMode}
+                  disabled={disabled}
+                  onChange={(e) => setPaymentMode(e.target.value)}
+                  placeholder="e.g. Bank Transfer, PayPal, Wise, UPI"
+                  className={fieldCls}
+                />
+              </div>
+            </>
+          )}
+
           <div className="space-y-1.5">
             <label
               htmlFor="checklist-note"
@@ -576,28 +710,30 @@ function UpdateStatusModal({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label
-              htmlFor="checklist-assignee"
-              className="block text-xs font-medium text-muted-foreground"
-            >
-              Assign member
-            </label>
-            <select
-              id="checklist-assignee"
-              value={assigneeId}
-              disabled={disabled}
-              onChange={(e) => setAssigneeId(e.target.value)}
-              className={fieldCls}
-            >
-              <option value="">— Unassigned —</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.full_name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {showAssignee && (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="checklist-assignee"
+                className="block text-xs font-medium text-muted-foreground"
+              >
+                Assign member
+              </label>
+              <select
+                id="checklist-assignee"
+                value={assigneeId}
+                disabled={disabled}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className={fieldCls}
+              >
+                <option value="">— Unassigned —</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-card px-5 py-4">
@@ -630,6 +766,7 @@ function UpdateStatusModal({
 const STATUS_BADGE_CLS: Record<ChecklistStatus, string> = {
   pending: "bg-slate-100 text-slate-700",
   in_progress: "bg-blue-100 text-blue-700",
+  review: "bg-amber-100 text-amber-700",
   completed: "bg-green-100 text-green-700",
   approved: "bg-green-100 text-green-700",
   done: "bg-green-100 text-green-700",
@@ -716,158 +853,108 @@ function Timeline({ item }: { item: ChecklistItem }) {
 }
 
 /* ------------------------------------------------------------------ *
- * Comment box
+ * Payment details (payment item only)
  * ------------------------------------------------------------------ */
 
-function CommentBox({
-  busy,
-  disabled,
-  members,
-  onSubmit,
-}: {
-  busy: boolean;
-  disabled: boolean;
-  members: UserRef[];
-  onSubmit: (body: string, subjectId?: string | null) => Promise<void>;
-}) {
-  const [body, setBody] = useState("");
-  const [subjectId, setSubjectId] = useState("");
+/** Title-case a payment type for display (e.g. "advance" -> "Advance"). */
+function paymentTypeLabel(type: string): string {
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
 
-  async function handleSend() {
-    const trimmed = body.trim();
-    if (trimmed === "") return;
-    try {
-      await onSubmit(trimmed, subjectId || null);
-      setBody("");
-      setSubjectId("");
-    } catch {
-      // Error is surfaced by the parent; keep the draft so it isn't lost.
-    }
-  }
+/** A small amount + currency string, e.g. "1,200 USD". */
+function formatAmount(amount: number, currency: string | null): string {
+  const formatted = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 2,
+  }).format(amount);
+  return currency ? `${formatted} ${currency}` : formatted;
+}
 
+/** Badge for a payment type (regular renders nothing). */
+function PaymentTypeBadge({ type }: { type: string }) {
+  const cls = PAYMENT_TYPE_BADGE_CLS[type];
+  if (!cls) return null;
   return (
-    <div className="mt-4 space-y-2">
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={2}
-        placeholder="Add a comment…"
-        disabled={disabled}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-      />
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {members.length > 0 && (
-          <label className="mr-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="whitespace-nowrap">Member:</span>
-            <select
-              value={subjectId}
-              onChange={(e) => setSubjectId(e.target.value)}
-              disabled={disabled}
-              aria-label="Member this comment is about"
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-            >
-              <option value="">— none —</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.full_name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <button
-          type="button"
-          onClick={() => void handleSend()}
-          disabled={disabled || body.trim() === ""}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-        >
-          <Send className="h-4 w-4" />
-          {busy ? "Sending…" : "Send"}
-        </button>
-      </div>
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+        cls,
+      )}
+    >
+      {paymentTypeLabel(type)}
+    </span>
+  );
+}
+
+/** Compact collapsed-header chips summarising a payment. */
+function PaymentChips({ item }: { item: ChecklistItem }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      {item.amount != null && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+          <CreditCard className="h-3 w-3" />
+          {formatAmount(item.amount, item.currency)}
+        </span>
+      )}
+      {item.payment_type && <PaymentTypeBadge type={item.payment_type} />}
+      {item.transaction_id && (
+        <span className="inline-flex items-center gap-1">
+          <span aria-hidden="true">·</span>
+          <span className="font-medium text-foreground">
+            {item.transaction_id}
+          </span>
+        </span>
+      )}
+      {item.payment_mode && (
+        <span className="inline-flex items-center gap-1">
+          <span aria-hidden="true">·</span>
+          {item.payment_mode}
+        </span>
+      )}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ *
- * Request Payment (managers, payment item only)
- * ------------------------------------------------------------------ */
-
-function RequestPaymentControl({
-  busy,
-  disabled,
-  onRequest,
-}: {
-  busy: boolean;
-  disabled: boolean;
-  onRequest: (note?: string) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
-
-  async function handleConfirm() {
-    const trimmed = note.trim();
-    try {
-      await onRequest(trimmed === "" ? undefined : trimmed);
-      setNote("");
-      setOpen(false);
-    } catch {
-      // Error surfaced by the parent; keep the form open with the draft note.
-    }
-  }
-
-  if (!open) {
-    return (
-      <div className="mb-4 flex justify-start">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          disabled={disabled}
-          className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
-        >
-          <CreditCard className="h-4 w-4" />
-          Request Payment
-        </button>
-      </div>
-    );
-  }
-
+/** Expanded-body breakdown of a payment's recorded fields. */
+function PaymentDetails({ item }: { item: ChecklistItem }) {
   return (
-    <div className="mb-4 space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-      <label className="block text-xs font-medium text-muted-foreground">
-        Add a note (optional)
-      </label>
-      <textarea
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        rows={2}
-        placeholder="e.g. Invoice attached, please process."
-        disabled={disabled}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-      />
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(false);
-            setNote("");
-          }}
-          disabled={disabled}
-          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:opacity-50"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleConfirm()}
-          disabled={disabled}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-        >
-          <CreditCard className="h-4 w-4" />
-          {busy ? "Requesting…" : "Request Payment"}
-        </button>
-      </div>
-    </div>
+    <dl className="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/40 p-3 text-sm sm:grid-cols-4">
+      {item.amount != null && (
+        <div>
+          <dt className="text-xs text-muted-foreground">Amount</dt>
+          <dd className="mt-0.5 font-medium text-foreground">
+            {formatAmount(item.amount, item.currency)}
+          </dd>
+        </div>
+      )}
+      {item.payment_type && (
+        <div>
+          <dt className="text-xs text-muted-foreground">Type</dt>
+          <dd className="mt-0.5 flex items-center gap-1.5 font-medium text-foreground">
+            {PAYMENT_TYPE_BADGE_CLS[item.payment_type] ? (
+              <PaymentTypeBadge type={item.payment_type} />
+            ) : (
+              paymentTypeLabel(item.payment_type)
+            )}
+          </dd>
+        </div>
+      )}
+      {item.transaction_id && (
+        <div className="min-w-0">
+          <dt className="text-xs text-muted-foreground">Transaction ID</dt>
+          <dd className="mt-0.5 truncate font-medium text-foreground">
+            {item.transaction_id}
+          </dd>
+        </div>
+      )}
+      {item.payment_mode && (
+        <div className="min-w-0">
+          <dt className="text-xs text-muted-foreground">Mode</dt>
+          <dd className="mt-0.5 truncate font-medium text-foreground">
+            {item.payment_mode}
+          </dd>
+        </div>
+      )}
+    </dl>
   );
 }
 

@@ -222,13 +222,27 @@ export function setChecklistStatus(
   projectId: string,
   itemId: string,
   status: ChecklistStatus,
-  opts?: { note?: string; link?: string; assigneeId?: string | null },
+  opts?: {
+    note?: string;
+    link?: string;
+    assigneeId?: string | null;
+    paymentType?: string;
+    amount?: number;
+    currency?: string;
+    transactionId?: string;
+    paymentMode?: string;
+  },
 ): Promise<Checklist> {
   const body: {
     status: ChecklistStatus;
     note?: string;
     link?: string;
     assignee_id?: string | null;
+    payment_type?: string;
+    amount?: number;
+    currency?: string;
+    transaction_id?: string;
+    payment_mode?: string;
   } = { status };
 
   const note = opts?.note?.trim();
@@ -239,6 +253,17 @@ export function setChecklistStatus(
 
   // Send `assignee_id` whenever the caller passed the key — `null` clears it.
   if (opts && "assigneeId" in opts) body.assignee_id = opts.assigneeId ?? null;
+
+  // Payment fields — omit blanks; always send `amount` when it's a number (incl 0).
+  if (opts?.paymentType) body.payment_type = opts.paymentType;
+  if (typeof opts?.amount === "number" && Number.isFinite(opts.amount)) {
+    body.amount = opts.amount;
+  }
+  if (opts?.currency) body.currency = opts.currency;
+  const transactionId = opts?.transactionId?.trim();
+  if (transactionId) body.transaction_id = transactionId;
+  const paymentMode = opts?.paymentMode?.trim();
+  if (paymentMode) body.payment_mode = paymentMode;
 
   return api.put<Checklist>(
     `/projects/${projectId}/checklist/${itemId}/status`,
