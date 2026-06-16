@@ -235,6 +235,7 @@ export function setChecklistStatus(
     pa?: number;
     dr?: number;
     traffic?: number;
+    password?: string;
   },
 ): Promise<Checklist> {
   const body: {
@@ -251,6 +252,7 @@ export function setChecklistStatus(
     pa?: number;
     dr?: number;
     traffic?: number;
+    password?: string;
   } = { status };
 
   const note = opts?.note?.trim();
@@ -278,6 +280,10 @@ export function setChecklistStatus(
     const v = opts?.[key];
     if (typeof v === "number" && Number.isFinite(v)) body[key] = v;
   }
+
+  // Admin password to unlock a completed checklist.
+  const password = opts?.password?.trim();
+  if (password) body.password = password;
 
   return api.put<Checklist>(
     `/projects/${projectId}/checklist/${itemId}/status`,

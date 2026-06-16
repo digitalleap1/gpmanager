@@ -425,6 +425,8 @@ export interface Checklist {
   completed_count: number;
   total: number;
   all_done: boolean;
+  /** True once every item is complete — further edits need an admin password. */
+  locked: boolean;
   /** True when the current user (admin / this project's team lead) may change
    * item statuses. The item's assignee may also update its own item. */
   can_manage_status: boolean;

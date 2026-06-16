@@ -26,6 +26,7 @@ import {
   ExternalLink,
   Globe,
   Link as LinkIcon,
+  Lock,
   PenLine,
   User as UserIcon,
   X,
@@ -57,6 +58,11 @@ interface StatusUpdateOpts {
   currency?: string;
   transactionId?: string;
   paymentMode?: string;
+  da?: number;
+  pa?: number;
+  dr?: number;
+  traffic?: number;
+  password?: string;
 }
 
 /** Payment-type options shown only on the payment item. */
@@ -186,6 +192,12 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
                 Workflow Complete
               </span>
             )}
+            {checklist.locked && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                <Lock className="h-3.5 w-3.5" />
+                Locked
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -230,6 +242,7 @@ export function WorkflowChecklist({ projectId }: { projectId: string }) {
                     item={item}
                     members={checklist.members}
                     canUpdate={canUpdate}
+                    locked={checklist.locked}
                     busy={busyItemId === item.id}
                     disabled={busyItemId !== null}
                     onStatusUpdate={handleStatusUpdate}
@@ -252,6 +265,7 @@ function ChecklistItemCard({
   item,
   members,
   canUpdate,
+  locked,
   busy,
   disabled,
   onStatusUpdate,
@@ -259,6 +273,7 @@ function ChecklistItemCard({
   item: ChecklistItem;
   members: UserRef[];
   canUpdate: boolean;
+  locked: boolean;
   busy: boolean;
   disabled: boolean;
   onStatusUpdate: (
@@ -392,6 +407,7 @@ function ChecklistItemCard({
         <UpdateStatusModal
           item={item}
           members={members}
+          locked={locked}
           busy={busy}
           disabled={disabled}
           onClose={() => setModalOpen(false)}
@@ -431,6 +447,7 @@ function ItemLink({ link }: { link: string }) {
 function UpdateStatusModal({
   item,
   members,
+  locked,
   busy,
   disabled,
   onClose,
@@ -438,6 +455,7 @@ function UpdateStatusModal({
 }: {
   item: ChecklistItem;
   members: UserRef[];
+  locked: boolean;
   busy: boolean;
   disabled: boolean;
   onClose: () => void;
@@ -448,6 +466,7 @@ function UpdateStatusModal({
 }) {
   const isPayment = item.item_key === "payment";
   const isFindWebsite = item.item_key === "find_website";
+  const [adminPassword, setAdminPassword] = useState("");
 
   const [status, setStatus] = useState<ChecklistStatus>(item.status);
   const [link, setLink] = useState(item.link ?? "");
@@ -522,6 +541,7 @@ function UpdateStatusModal({
         link,
         // When the assignee field is hidden (status done), don't change it.
         assigneeId: showAssignee ? assigneeId || null : undefined,
+        password: adminPassword.trim() || undefined,
         ...(isPayment
           ? {
               paymentType,
@@ -582,6 +602,25 @@ function UpdateStatusModal({
         </div>
 
         <div className="space-y-4 px-5 py-4">
+          {locked && (
+            <div className="space-y-1.5 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+                <Lock className="h-3.5 w-3.5" />
+                This checklist is complete and locked. Enter an admin password to
+                edit it.
+              </p>
+              <input
+                type="password"
+                value={adminPassword}
+                disabled={disabled}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                placeholder="Admin password"
+                autoComplete="off"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              />
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <label
               htmlFor="checklist-status"
@@ -875,7 +914,7 @@ function UpdateStatusModal({
           <button
             type="button"
             onClick={() => void handleSubmit()}
-            disabled={disabled}
+            disabled={disabled || (locked && adminPassword.trim() === "")}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             {busy ? "Updating…" : "Update"}
