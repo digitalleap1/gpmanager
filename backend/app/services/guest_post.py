@@ -78,6 +78,80 @@ class GuestPostService:
             )
         )
 
+    def bulk_create(self, project_id: uuid.UUID, links) -> dict:
+        """Add MANY guest-post links to a project at once. For rows flagged
+        `request_payment`, also raise a pending Payment (routed to admins, defaults
+        to the row's price). Returns {created, payments_requested}."""
+        from decimal import Decimal
+
+        from app.schemas.payment import PaymentCreate
+        from app.services.payment import PaymentService
+
+        proj = self.db.get(Project, project_id)
+        if proj is None or proj.company_id != self.company_id or proj.deleted_at is not None:
+            raise NotFound("Project not found")
+        psvc = PaymentService(self.db, self.user)
+        created = 0
+        payments = 0
+        for item in links:
+            name = (item.website_name or "").strip()
+            url = (item.link_url or "").strip()
+            if not name and not url:
+                continue  # skip empty rows
+            gp = GuestPost(
+                company_id=self.company_id,
+                project_id=project_id,
+                created_by=self.user.id,
+                website_name=name or None,
+                live_link=url or None,
+                status="published" if url else "prospect",
+                live_link_date=datetime.now(UTC).date() if url else None,
+                da=item.da,
+                pa=item.pa,
+                dr=item.dr,
+                traffic=item.traffic,
+                price=Decimal(str(item.price)) if item.price is not None else None,
+            )
+            self.db.add(gp)
+            self.db.flush()
+            created += 1
+            if item.request_payment:
+                psvc.create(
+                    PaymentCreate(
+                        project_id=project_id,
+                        guest_post_id=gp.id,
+                        amount=item.price,
+                        currency=(item.currency or "USD"),
+                        mode_of_payment=(item.payment_mode or None),
+                        live_link=url or None,
+                        status="pending",
+                        remarks=f"Payment for '{name or url}'",
+                    )
+                )
+                payments += 1
+        self.activity.record(
+            company_id=self.company_id,
+            user_id=self.user.id,
+            action="guest_post.bulk_created",
+            module="guest_post",
+            entity_type="project",
+            entity_id=project_id,
+            new={"name": proj.name, "created": created, "payments": payments},
+        )
+        Notifier(self.db).notify_admins(
+            company_id=self.company_id,
+            type="guest_post_bulk",
+            title="Links added",
+            body=f"{self.user.full_name} added {created} link(s) to '{proj.name}'"
+            + (f" with {payments} payment request(s)" if payments else "")
+            + ".",
+            entity_type="project",
+            entity_id=project_id,
+            exclude=self.user.id,
+        )
+        self.db.commit()
+        return {"created": created, "payments_requested": payments}
+
     def list(self, **filters) -> tuple[list[GuestPost], int]:
         items, total = self.gps.list_guest_posts(
             self.company_id, restrict_to_users=self._scope(), **filters

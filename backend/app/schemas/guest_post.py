@@ -253,6 +253,32 @@ class LinkPaymentRequest(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class BulkLinkItem(BaseModel):
+    """One row of the bulk add-links form."""
+
+    website_name: str | None = Field(default=None, max_length=180)
+    link_url: str | None = Field(default=None, max_length=700)  # live link if known
+    da: int | None = Field(default=None, ge=0, le=100)
+    pa: int | None = Field(default=None, ge=0, le=100)
+    dr: int | None = Field(default=None, ge=0, le=100)
+    traffic: int | None = Field(default=None, ge=0)
+    price: float | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, max_length=3)
+    payment_mode: str | None = Field(default=None, max_length=60)
+    # When true, also raise a pending payment for this link (routed to admins).
+    request_payment: bool = False
+
+
+class BulkLinksCreate(BaseModel):
+    project_id: uuid.UUID
+    links: list[BulkLinkItem] = Field(min_length=1, max_length=200)
+
+
+class BulkLinksResult(BaseModel):
+    created: int
+    payments_requested: int
+
+
 class NamedCount(BaseModel):
     name: str
     count: int

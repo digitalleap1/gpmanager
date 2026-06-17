@@ -10,6 +10,8 @@ from app.database.session import get_db
 from app.routes.deps import CurrentUser
 from app.schemas.common import Page
 from app.schemas.guest_post import (
+    BulkLinksCreate,
+    BulkLinksResult,
     GuestPostCreate,
     GuestPostDetail,
     GuestPostListItem,
@@ -72,6 +74,17 @@ def create_guest_post(
     body: GuestPostCreate, user: CurrentUser, db: DbSession
 ) -> GuestPostListItem:
     return GuestPostListItem.from_gp(GuestPostService(db, user).create(body))
+
+
+@router.post("/bulk", response_model=BulkLinksResult, status_code=status.HTTP_201_CREATED)
+def bulk_create_links(
+    body: BulkLinksCreate, user: CurrentUser, db: DbSession
+) -> BulkLinksResult:
+    """Add many links to a project at once; flagged rows also raise a pending
+    payment (routed to admins) that shows on /payments + the ledger."""
+    return BulkLinksResult(
+        **GuestPostService(db, user).bulk_create(body.project_id, body.links)
+    )
 
 
 # Static path before /{gp_id}.
