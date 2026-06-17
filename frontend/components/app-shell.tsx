@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Building2,
   CheckSquare,
   CreditCard,
   FileBarChart,
@@ -47,7 +46,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/guest-posts", label: "Guest Post Links", icon: FileText },
   { href: "/websites", label: "Websites", icon: Globe },
   { href: "/payments", label: "Payments", icon: CreditCard },
-  { href: "/clients", label: "Clients", icon: Building2, managerOnly: true },
   { href: "/ledger", label: "Ledger", icon: Wallet, managerOnly: true },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/reports", label: "Reports", icon: FileBarChart },

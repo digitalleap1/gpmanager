@@ -33,6 +33,7 @@ class GuestPostCreate(BaseModel):
     website_id: uuid.UUID | None = None
     website_name: str | None = Field(default=None, max_length=180)
     da: int | None = Field(default=None, ge=0, le=100)
+    pa: int | None = Field(default=None, ge=0, le=100)
     dr: int | None = Field(default=None, ge=0, le=100)
     traffic: int | None = Field(default=None, ge=0)
     price: float | None = Field(default=None, ge=0)
@@ -56,6 +57,7 @@ class GuestPostUpdate(BaseModel):
     website_id: uuid.UUID | None = None
     website_name: str | None = Field(default=None, max_length=180)
     da: int | None = Field(default=None, ge=0, le=100)
+    pa: int | None = Field(default=None, ge=0, le=100)
     dr: int | None = Field(default=None, ge=0, le=100)
     traffic: int | None = Field(default=None, ge=0)
     price: float | None = Field(default=None, ge=0)
@@ -116,6 +118,7 @@ class GuestPostListItem(BaseModel):
     website_id: uuid.UUID | None
     website_name: str | None
     da: int | None
+    pa: int | None
     dr: int | None
     traffic: int | None
     price: float | None
@@ -143,6 +146,7 @@ class GuestPostListItem(BaseModel):
             website_id=gp.website_id,
             website_name=gp.website_name,
             da=gp.da,
+            pa=gp.pa,
             dr=gp.dr,
             traffic=gp.traffic,
             price=float(gp.price) if gp.price is not None else None,
@@ -239,6 +243,14 @@ class WorkflowAssignWriter(BaseModel):
 
 class WorkflowReassign(BaseModel):
     assignee_id: uuid.UUID | None = None
+
+
+class LinkPaymentRequest(BaseModel):
+    """Raise a pending payment for a guest-post link (defaults to its price)."""
+
+    amount: float | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, max_length=3)
+    note: str | None = Field(default=None, max_length=500)
 
 
 class NamedCount(BaseModel):

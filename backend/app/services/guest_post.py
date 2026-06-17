@@ -43,6 +43,41 @@ class GuestPostService:
             or gp.created_by == self.user.id
         )
 
+    def request_payment(
+        self,
+        gp_id: uuid.UUID,
+        amount: float | None = None,
+        currency: str | None = None,
+        note: str | None = None,
+    ):
+        """Raise a pending Payment for this guest-post link, routed to the admins.
+        Shows up on /payments + the ledger. Returns the created Payment."""
+        from app.schemas.payment import PaymentCreate
+        from app.services.payment import PaymentService
+
+        gp = self.get(gp_id)
+        if not self._can_edit(gp):
+            raise PermissionDenied()
+        remarks = f"Payment requested for '{gp.website_name or 'guest post'}'."
+        if note:
+            remarks += f" {note}"
+        return PaymentService(self.db, self.user).create(
+            PaymentCreate(
+                project_id=gp.project_id,
+                website_id=gp.website_id,
+                guest_post_id=gp.id,
+                currency=(currency or "USD"),
+                amount=(
+                    amount
+                    if amount is not None
+                    else (float(gp.price) if gp.price is not None else None)
+                ),
+                live_link=gp.live_link,
+                status="pending",
+                remarks=remarks,
+            )
+        )
+
     def list(self, **filters) -> tuple[list[GuestPost], int]:
         items, total = self.gps.list_guest_posts(
             self.company_id, restrict_to_users=self._scope(), **filters

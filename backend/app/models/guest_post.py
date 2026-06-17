@@ -39,6 +39,7 @@ class GuestPost(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     website_name: Mapped[str | None] = mapped_column(String(180))
     da: Mapped[int | None] = mapped_column(SmallInteger)
+    pa: Mapped[int | None] = mapped_column(SmallInteger)
     dr: Mapped[int | None] = mapped_column(SmallInteger)
     traffic: Mapped[int | None] = mapped_column(BigInteger)
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))

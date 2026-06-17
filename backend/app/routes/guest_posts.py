@@ -15,6 +15,7 @@ from app.schemas.guest_post import (
     GuestPostListItem,
     GuestPostStatsRead,
     GuestPostUpdate,
+    LinkPaymentRequest,
     PublishRequest,
     ReviewDecision,
     StatusChange,
@@ -218,6 +219,17 @@ def publish_guest_post(
             gp_id, body.live_link, body.live_link_date, body.anchor_text
         )
     )
+
+
+@router.post("/{gp_id}/request-payment", status_code=status.HTTP_201_CREATED)
+def request_link_payment(
+    gp_id: uuid.UUID, body: LinkPaymentRequest, user: CurrentUser, db: DbSession
+) -> dict[str, str]:
+    """Raise a pending payment for this link (routed to admins, shows on /payments)."""
+    pay = GuestPostService(db, user).request_payment(
+        gp_id, body.amount, body.currency, body.note
+    )
+    return {"payment_id": str(pay.id), "status": "requested"}
 
 
 @router.delete("/{gp_id}", status_code=status.HTTP_204_NO_CONTENT)

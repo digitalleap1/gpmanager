@@ -38,7 +38,6 @@ import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { TaskStatusBadge } from "@/components/task-status-badge";
-import { WorkflowChecklist } from "@/components/workflow-checklist";
 import { ApiError } from "@/lib/api";
 import type {
   AuditLogRead,
@@ -392,7 +391,6 @@ function ProjectHub({ id }: { id: string }) {
         <div>
           {activeTab === "overview" && (
             <OverviewTab
-              projectId={id}
               overview={overview}
               loading={overviewLoading}
               error={overviewError}
@@ -566,13 +564,11 @@ function HeaderBand({
  * ================================================================== */
 
 function OverviewTab({
-  projectId,
   overview,
   loading,
   error,
   onRetry,
 }: {
-  projectId: string;
   overview: ProjectOverview | null;
   loading: boolean;
   error: string | null;
@@ -580,8 +576,6 @@ function OverviewTab({
 }) {
   return (
     <div className="space-y-6">
-      {/* Workflow checklist — owns its own loading / error state */}
-      <WorkflowChecklist projectId={projectId} />
       <OverviewMetrics
         overview={overview}
         loading={loading}
