@@ -204,45 +204,52 @@ export default function DashboardPage() {
           </section>
 
           {/* Stat cards */}
-          <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             <StatCard
               icon={FolderKanban}
+              accent="brand"
               label="Total Projects"
               value={summary.total_projects}
               href="/projects"
             />
             <StatCard
               icon={BarChart3}
+              accent="blue"
               label="Active"
               value={summary.active_projects}
               href="/projects"
             />
             <StatCard
               icon={CheckCircle2}
+              accent="green"
               label="Completed"
               value={summary.completed_projects}
               href="/projects"
             />
             <StatCard
               icon={PauseCircle}
+              accent="amber"
               label="On Hold"
               value={summary.on_hold_projects}
               href="/projects"
             />
             <StatCard
               icon={Target}
+              accent="violet"
               label="Target Links"
               value={summary.total_target_links}
               href="/guest-posts"
             />
             <StatCard
               icon={Link2}
+              accent="cyan"
               label="Live Links"
               value={summary.total_live_links}
               href="/guest-posts"
             />
             <StatCard
               icon={CircleDollarSign}
+              accent="rose"
               label="Pending Payments"
               value={summary.pending_payments_count}
               sublabel={formatCurrency(summary.pending_payments_amount)}
@@ -250,6 +257,7 @@ export default function DashboardPage() {
             />
             <StatCard
               icon={Wallet}
+              accent="slate"
               label="Monthly Budget"
               value={formatCurrency(summary.monthly_budget_total)}
               sublabel={`${formatCurrency(summary.monthly_spent_total)} spent`}
@@ -258,6 +266,7 @@ export default function DashboardPage() {
             {ledger && (
               <StatCard
                 icon={Coins}
+                accent="green"
                 label="Total Revenue"
                 value={formatCurrency(ledger.total_revenue)}
                 sublabel={`${formatCurrency(
@@ -268,12 +277,14 @@ export default function DashboardPage() {
             )}
             <StatCard
               icon={Users}
+              accent="blue"
               label="Team Members"
               value={summary.team_members}
               href={isAdmin ? "/users" : undefined}
             />
             <StatCard
               icon={CircleSlash}
+              accent="slate"
               label="Cancelled"
               value={summary.cancelled_projects}
               href="/projects"
