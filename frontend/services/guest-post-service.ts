@@ -8,6 +8,8 @@
 
 import { api } from "@/lib/api";
 import type {
+  BulkLinkRow,
+  BulkLinksResult,
   GuestPostCreate,
   GuestPostDetail,
   GuestPostListItem,
@@ -62,6 +64,44 @@ export function updateGuestPost(
   data: GuestPostUpdate,
 ): Promise<GuestPostListItem> {
   return api.patch<GuestPostListItem>(`/guest-posts/${id}`, data);
+}
+
+/**
+ * Create several guest-post links in one call. Blank/undefined numeric fields
+ * are dropped so they aren't sent as `0`; `payment_mode`/`currency` are only
+ * included when non-empty; `request_payment` is always sent as a real boolean.
+ * Rows where both `website_name` and `link_url` are blank are skipped
+ * server-side. Each row's payment (when requested) defaults to its `price`.
+ */
+export function bulkCreateLinks(
+  projectId: string,
+  links: BulkLinkRow[],
+): Promise<BulkLinksResult> {
+  const numericKeys = ["da", "pa", "dr", "traffic", "price"] as const;
+  const stringKeys = ["website_name", "link_url", "currency", "payment_mode"] as const;
+
+  const cleaned = links.map((row) => {
+    const out: BulkLinkRow = {};
+    for (const key of stringKeys) {
+      const value = row[key];
+      if (typeof value === "string" && value.trim() !== "") {
+        out[key] = value.trim();
+      }
+    }
+    for (const key of numericKeys) {
+      const value = row[key];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        out[key] = value;
+      }
+    }
+    out.request_payment = row.request_payment === true;
+    return out;
+  });
+
+  return api.post<BulkLinksResult>("/guest-posts/bulk", {
+    project_id: projectId,
+    links: cleaned,
+  });
 }
 
 /** Move a guest post to a new status, optionally recording a note. */

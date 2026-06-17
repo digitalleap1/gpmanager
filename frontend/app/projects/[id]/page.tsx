@@ -11,12 +11,14 @@ import {
   FileText,
   Globe,
   LayoutGrid,
+  ListPlus,
   MessageSquare,
   Pencil,
   Plus,
   Send,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,6 +32,7 @@ import {
 } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { BulkAddLinksModal } from "@/components/bulk-add-links-modal";
 import {
   GuestPostStatusBadge,
   ReviewStatusBadge,
@@ -41,6 +44,7 @@ import { TaskStatusBadge } from "@/components/task-status-badge";
 import { ApiError } from "@/lib/api";
 import type {
   AuditLogRead,
+  BulkLinksResult,
   GuestPostListItem,
   MonthlyBudget,
   MonthlyGoal,
@@ -804,6 +808,8 @@ function LinksTab({ projectId }: { projectId: string }) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -829,16 +835,58 @@ function LinksTab({ projectId }: { projectId: string }) {
     void load();
   }, [load]);
 
+  function handleBulkCreated(result: BulkLinksResult) {
+    setBulkOpen(false);
+    setBulkSuccess(
+      `Added ${result.created} link${result.created === 1 ? "" : "s"}, ` +
+        `${result.payments_requested} payment request${
+          result.payments_requested === 1 ? "" : "s"
+        }.`,
+    );
+    setPage(1);
+    void load();
+  }
+
   return (
     <TabSection
       title="Guest post links"
       action={
-        <AddButton
-          href={`/guest-posts/new?project_id=${projectId}`}
-          label="Add link"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setBulkSuccess(null);
+              setBulkOpen(true);
+            }}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10"
+          >
+            <ListPlus className="h-4 w-4" />
+            Bulk add
+          </button>
+          <AddButton
+            href={`/guest-posts/new?project_id=${projectId}`}
+            label="Add link"
+          />
+        </div>
       }
     >
+      {bulkSuccess && (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+        >
+          <span>{bulkSuccess}</span>
+          <button
+            type="button"
+            onClick={() => setBulkSuccess(null)}
+            className="shrink-0 rounded-md p-0.5 text-green-700 hover:bg-green-100"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <LoadingRow />
       ) : error ? (
@@ -929,6 +977,14 @@ function LinksTab({ projectId }: { projectId: string }) {
             onPage={setPage}
           />
         </>
+      )}
+
+      {bulkOpen && (
+        <BulkAddLinksModal
+          projectId={projectId}
+          onClose={() => setBulkOpen(false)}
+          onCreated={handleBulkCreated}
+        />
       )}
     </TabSection>
   );

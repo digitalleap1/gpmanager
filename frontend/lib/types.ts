@@ -609,6 +609,31 @@ export interface GuestPostPublish {
   anchor_text?: string | null;
 }
 
+/**
+ * One link row submitted via `POST /guest-posts/bulk`. Numeric/string fields are
+ * all optional; rows where both `website_name` and `link_url` are blank are
+ * skipped server-side. When `request_payment` is true the backend raises a
+ * pending payment for that row (defaulting the amount to `price`).
+ */
+export interface BulkLinkRow {
+  website_name?: string;
+  link_url?: string;
+  da?: number;
+  pa?: number;
+  dr?: number;
+  traffic?: number;
+  price?: number;
+  currency?: string;
+  payment_mode?: string;
+  request_payment?: boolean;
+}
+
+/** Result envelope returned by `POST /guest-posts/bulk`. */
+export interface BulkLinksResult {
+  created: number;
+  payments_requested: number;
+}
+
 /** Filter/query params accepted by `GET /guest-posts`. */
 export interface GuestPostListParams {
   page?: number;
