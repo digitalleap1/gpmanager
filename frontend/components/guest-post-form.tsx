@@ -51,6 +51,7 @@ export function GuestPostForm({
   const [projectId, setProjectId] = useState(initial?.project_id ?? "");
   const [websiteName, setWebsiteName] = useState(initial?.website_name ?? "");
   const [da, setDa] = useState(initial?.da != null ? String(initial.da) : "");
+  const [pa, setPa] = useState(initial?.pa != null ? String(initial.pa) : "");
   const [dr, setDr] = useState(initial?.dr != null ? String(initial.dr) : "");
   const [traffic, setTraffic] = useState(
     initial?.traffic != null ? String(initial.traffic) : "",
@@ -118,6 +119,7 @@ export function GuestPostForm({
       project_id: projectId,
       website_name: websiteName.trim() || null,
       da: toNumberOrNull(da),
+      pa: toNumberOrNull(pa),
       dr: toNumberOrNull(dr),
       traffic: toNumberOrNull(traffic),
       price: toNumberOrNull(price),
@@ -189,6 +191,21 @@ export function GuestPostForm({
             min={0}
             value={da}
             onChange={(e) => setDa(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="pa" className={labelClass}>
+            PA
+          </label>
+          <input
+            id="pa"
+            type="number"
+            min={0}
+            max={100}
+            value={pa}
+            onChange={(e) => setPa(e.target.value)}
             className={inputClass}
           />
         </div>

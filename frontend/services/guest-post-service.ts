@@ -88,6 +88,26 @@ export function removeGuestPost(id: string): Promise<void> {
   return api.delete<void>(`/guest-posts/${id}`);
 }
 
+/**
+ * Raise a pending payment for a guest-post link. Defaults the amount to the
+ * link's own price when omitted. Allowed for the link's creator/assignee or a
+ * manager — a 403 is surfaced otherwise. Empty keys are omitted from the body.
+ */
+export function requestGuestPostPayment(
+  id: string,
+  body: { amount?: number; currency?: string; note?: string } = {},
+): Promise<{ payment_id: string; status: string }> {
+  const payload: Record<string, string | number> = {};
+  if (body.amount != null) payload.amount = body.amount;
+  if (body.currency != null && body.currency !== "")
+    payload.currency = body.currency;
+  if (body.note != null && body.note !== "") payload.note = body.note;
+  return api.post<{ payment_id: string; status: string }>(
+    `/guest-posts/${id}/request-payment`,
+    payload,
+  );
+}
+
 /* ------------------------------------------------------------------ *
  * Review workflow + stats
  * ------------------------------------------------------------------ */

@@ -535,6 +535,7 @@ export interface GuestPostListItem {
   website_id: string | null;
   website_name: string | null;
   da: number | null;
+  pa: number | null;
   dr: number | null;
   traffic: number | null;
   price: number | null;
@@ -584,6 +585,7 @@ export interface GuestPostCreate {
   website_id?: string | null;
   website_name?: string | null;
   da?: number | null;
+  pa?: number | null;
   dr?: number | null;
   traffic?: number | null;
   price?: number | null;

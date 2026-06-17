@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Pencil } from "lucide-react";
+import { CreditCard, ExternalLink, Pencil } from "lucide-react";
 import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 
@@ -19,6 +19,7 @@ import { formatCurrency, formatDate, relativeTime } from "@/lib/utils";
 import {
   getGuestPost,
   publish,
+  requestGuestPostPayment,
   setStatus,
 } from "@/services/guest-post-service";
 
@@ -86,13 +87,16 @@ export default function GuestPostDetailPage({
             >
               ← Back to list
             </Link>
-            <Link
-              href={`/guest-posts/${id}/edit`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Link>
+            <div className="relative flex items-center gap-2">
+              <RequestPaymentControl guestPostId={id} price={gp.price} />
+              <Link
+                href={`/guest-posts/${id}/edit`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Link>
+            </div>
           </div>
 
           {/* Overview */}
@@ -117,6 +121,7 @@ export default function GuestPostDetailPage({
                 }
               />
               <Field label="DA" value={gp.da} />
+              <Field label="PA" value={gp.pa} />
               <Field label="DR" value={gp.dr} />
               <Field label="Traffic" value={gp.traffic} />
               <Field
@@ -211,6 +216,140 @@ function Field({
         {label}
       </dt>
       <dd className="mt-1 text-sm">{isEmpty ? "—" : value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Header action that raises a pending payment for this link. One click defaults
+ * the amount to the link's own price; an optional amount + note may be supplied.
+ * Shows a success message and surfaces a friendly 403 message.
+ */
+function RequestPaymentControl({
+  guestPostId,
+  price,
+}: {
+  guestPostId: string;
+  price: number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleRequest() {
+    setErr(null);
+    setBusy(true);
+    try {
+      const trimmedAmount = amount.trim();
+      await requestGuestPostPayment(guestPostId, {
+        amount: trimmedAmount === "" ? undefined : Number(trimmedAmount),
+        note: note.trim() || undefined,
+      });
+      setDone(true);
+      setOpen(false);
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 403
+          ? "You can't request payment for this link."
+          : e instanceof ApiError
+            ? e.message
+            : "Unable to request payment for this link.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700">
+        <CreditCard className="h-4 w-4" />
+        Payment requested ✓
+      </span>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+      >
+        <CreditCard className="h-4 w-4" />
+        Request Payment
+      </button>
+    );
+  }
+
+  return (
+    <div className="absolute right-0 top-full z-10 mt-2 w-72 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-xl">
+      <h3 className="text-sm font-semibold">Request payment</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Raises a pending payment. Leave the amount blank to use the link&apos;s
+        price{price != null ? ` (${formatCurrency(price)})` : ""}.
+      </p>
+      <div className="mt-3 space-y-3">
+        <div className="space-y-1.5">
+          <label htmlFor="rp_amount" className="text-sm font-medium">
+            Amount (optional)
+          </label>
+          <input
+            id="rp_amount"
+            type="number"
+            min={0}
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder={price != null ? String(price) : "Link price"}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="rp_note" className="text-sm font-medium">
+            Note (optional)
+          </label>
+          <textarea
+            id="rp_note"
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+        {err && (
+          <p
+            role="alert"
+            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {err}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setErr(null);
+            }}
+            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleRequest}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            <CreditCard className="h-4 w-4" />
+            {busy ? "Requesting…" : "Request"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

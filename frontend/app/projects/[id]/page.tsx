@@ -54,7 +54,10 @@ import type {
   WebsiteUsedItem,
 } from "@/lib/types";
 import { formatDate, monthLabel, relativeTime } from "@/lib/utils";
-import { listGuestPosts } from "@/services/guest-post-service";
+import {
+  listGuestPosts,
+  requestGuestPostPayment,
+} from "@/services/guest-post-service";
 import { getUsers } from "@/services/lookup-service";
 import { listPayments } from "@/services/payment-service";
 import {
@@ -850,10 +853,12 @@ function LinksTab({ projectId }: { projectId: string }) {
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Website</th>
                   <th className="px-4 py-3 font-medium">Link URL</th>
+                  <th className="px-4 py-3 font-medium">DA / PA / DR</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Published</th>
                   <th className="px-4 py-3 font-medium">Added By</th>
                   <th className="px-4 py-3 text-right font-medium">Cost</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -886,6 +891,9 @@ function LinksTab({ projectId }: { projectId: string }) {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {gp.da ?? "—"} / {gp.pa ?? "—"} / {gp.dr ?? "—"}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <GuestPostStatusBadge status={gp.status} />
@@ -903,6 +911,11 @@ function LinksTab({ projectId }: { projectId: string }) {
                     <td className="px-4 py-3 text-right text-muted-foreground">
                       {gp.price != null ? formatBudget(gp.price, "USD") : "—"}
                     </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end">
+                        <RequestPaymentButton guestPostId={gp.id} />
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -918,6 +931,62 @@ function LinksTab({ projectId }: { projectId: string }) {
         </>
       )}
     </TabSection>
+  );
+}
+
+/**
+ * Per-row "Request payment" action: raises a pending payment for the link
+ * (defaulting the amount to the link's own price) and shows a brief success
+ * state. Surfaces a friendly message on a 403.
+ */
+function RequestPaymentButton({ guestPostId }: { guestPostId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleRequest() {
+    setErr(null);
+    setBusy(true);
+    try {
+      await requestGuestPostPayment(guestPostId);
+      setDone(true);
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 403
+          ? "You can't request payment for this link."
+          : errMsg(e, "Unable to request payment for this link."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700">
+        Payment requested ✓
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={handleRequest}
+        disabled={busy}
+        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary/40 hover:text-primary disabled:opacity-50"
+        title="Request payment for this link"
+      >
+        <CreditCard className="h-3.5 w-3.5" />
+        {busy ? "Requesting…" : "Request payment"}
+      </button>
+      {err && (
+        <span role="alert" className="text-right text-xs text-destructive">
+          {err}
+        </span>
+      )}
+    </div>
   );
 }
 
