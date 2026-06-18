@@ -4,6 +4,7 @@ import {
   Activity as ActivityIcon,
   Archive,
   ArchiveRestore,
+  CalendarDays,
   CheckSquare,
   CreditCard,
   ExternalLink,
@@ -56,6 +57,7 @@ import type {
   ProjectDetail,
   ProjectMember,
   ProjectOverview,
+  ProjectReport,
   TaskListItem,
   UserSummary,
   WebsiteUsedItem,
@@ -72,6 +74,7 @@ import {
   getProjectActivity,
   getBudgetSummary,
   getProjectOverview,
+  getProjectReport,
   getProjectWebsites,
   listBudgetPeriods,
   removeMember,
@@ -119,6 +122,70 @@ function pct(part: number, whole: number): number {
 /** Map an unknown error to a friendly, ApiError-aware message. */
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
+}
+
+/* ------------------------------------------------------------------ *
+ * Period-scoped report helpers
+ * ------------------------------------------------------------------ */
+
+/** The preset periods offered by the Overview "Project report" selector. */
+type ReportPeriod = "this_month" | "this_week" | "last_month" | "custom" | "all";
+
+const REPORT_PERIODS: { key: ReportPeriod; label: string }[] = [
+  { key: "this_month", label: "This month" },
+  { key: "this_week", label: "This week" },
+  { key: "last_month", label: "Last month" },
+  { key: "custom", label: "Custom" },
+  { key: "all", label: "All time" },
+];
+
+/** Format a `Date` as a local `YYYY-MM-DD` string (no timezone shift). */
+function toYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Resolve a preset period to its `[start, end]` `YYYY-MM-DD` range, computed
+ * client-side from "now". `all` yields `[null, null]` (both params omitted).
+ * `custom` is handled by the component from its two date inputs, so it returns
+ * `[null, null]` here as a placeholder.
+ */
+function presetRange(period: ReportPeriod): [string | null, string | null] {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  switch (period) {
+    case "this_month": {
+      const start = new Date(year, month, 1);
+      const end = new Date(year, month + 1, 0); // day 0 of next month = last day
+      return [toYmd(start), toYmd(end)];
+    }
+    case "last_month": {
+      const start = new Date(year, month - 1, 1);
+      const end = new Date(year, month, 0);
+      return [toYmd(start), toYmd(end)];
+    }
+    case "this_week": {
+      // Monday → Sunday of the current week (local time).
+      const dow = now.getDay(); // 0 = Sun … 6 = Sat
+      const mondayOffset = dow === 0 ? -6 : 1 - dow;
+      const monday = new Date(year, month, now.getDate() + mondayOffset);
+      const sunday = new Date(
+        monday.getFullYear(),
+        monday.getMonth(),
+        monday.getDate() + 6,
+      );
+      return [toYmd(monday), toYmd(sunday)];
+    }
+    case "custom":
+    case "all":
+    default:
+      return [null, null];
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -412,6 +479,7 @@ function ProjectHub({ id }: { id: string }) {
         <div>
           {activeTab === "overview" && (
             <OverviewTab
+              projectId={id}
               overview={overview}
               loading={overviewLoading}
               error={overviewError}
@@ -586,11 +654,13 @@ function HeaderBand({
  * ================================================================== */
 
 function OverviewTab({
+  projectId,
   overview,
   loading,
   error,
   onRetry,
 }: {
+  projectId: string;
   overview: ProjectOverview | null;
   loading: boolean;
   error: string | null;
@@ -598,12 +668,320 @@ function OverviewTab({
 }) {
   return (
     <div className="space-y-6">
+      {/* Period-scoped report — additive, sits above the all-time metrics. */}
+      <ProjectReportCard projectId={projectId} />
+
       <OverviewMetrics
         overview={overview}
         loading={loading}
         error={error}
         onRetry={onRetry}
       />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Project report card — period-scoped, accurate metrics
+ * ------------------------------------------------------------------ */
+
+function ProjectReportCard({ projectId }: { projectId: string }) {
+  const [period, setPeriod] = useState<ReportPeriod>("this_month");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [report, setReport] = useState<ProjectReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Resolve the active period to its [start, end] range. For `custom` we use the
+  // two date inputs (both required); other presets are computed from "now".
+  const customReady = Boolean(customStart && customEnd);
+  const [start, end]: [string | null, string | null] =
+    period === "custom"
+      ? [customStart || null, customEnd || null]
+      : presetRange(period);
+
+  const load = useCallback(
+    async (rangeStart: string | null, rangeEnd: string | null) => {
+      setLoading(true);
+      setError(null);
+      try {
+        setReport(await getProjectReport(projectId, rangeStart, rangeEnd));
+      } catch (err) {
+        setError(errMsg(err, "Unable to load the project report."));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [projectId],
+  );
+
+  // Fetch on mount (This month) and whenever the resolved range changes — but
+  // hold off on Custom until both dates are picked.
+  useEffect(() => {
+    if (period === "custom" && !customReady) return;
+    void load(start, end);
+  }, [period, start, end, customReady, load]);
+
+  const cur = report?.currency ?? "USD";
+  const util = report?.utilization_pct ?? 0;
+  const utilWidth = Math.max(0, Math.min(100, util));
+  const utilTone =
+    util >= 100 ? "bg-red-500" : util >= 80 ? "bg-amber-500" : "bg-primary";
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm">
+      {/* Header: title + period label + selector */}
+      <div className="border-b border-border px-6 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1A1F4D]">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              Project report
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {report
+                ? report.period_label
+                : "Pick a period to see scoped metrics."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <fieldset
+              className="flex flex-wrap gap-1"
+              aria-label="Report period"
+            >
+              {REPORT_PERIODS.map(({ key, label }) => {
+                const active = key === period;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPeriod(key)}
+                    disabled={loading}
+                    aria-pressed={active}
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
+                      active
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "border border-border text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </fieldset>
+            <button
+              type="button"
+              onClick={() => void load(start, end)}
+              disabled={loading || (period === "custom" && !customReady)}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              {loading ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+        </div>
+
+        {/* Custom range inputs */}
+        {period === "custom" && (
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+              Start date
+              <input
+                type="date"
+                value={customStart}
+                max={customEnd || undefined}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+              End date
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart || undefined}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+            {!customReady && (
+              <p className="pb-1 text-xs text-muted-foreground">
+                Pick both dates to run the report.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Body: metrics / loading / error / awaiting-custom states */}
+      <div className="px-6 py-5">
+        {period === "custom" && !customReady ? (
+          <p className="text-sm text-muted-foreground">
+            Choose a start and end date above to see this range&apos;s metrics.
+          </p>
+        ) : error && !report ? (
+          <ErrorState message={error} onRetry={() => void load(start, end)} />
+        ) : loading && !report ? (
+          <p className="text-sm text-muted-foreground">Loading report…</p>
+        ) : report ? (
+          <div className={cn("space-y-6", loading && "opacity-60")}>
+            {error && (
+              <p
+                role="alert"
+                className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {error}
+              </p>
+            )}
+
+            {/* Budget */}
+            <ReportGroup title="Budget">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <StatCard
+                  icon={Wallet}
+                  accent="brand"
+                  label="Assigned"
+                  value={formatBudget(report.budget_assigned, cur)}
+                />
+                <StatCard
+                  icon={CreditCard}
+                  accent="rose"
+                  label="Spent"
+                  value={formatBudget(report.budget_spent, cur)}
+                />
+                <StatCard
+                  icon={Wallet}
+                  accent="amber"
+                  label="Pending"
+                  value={formatBudget(report.budget_pending, cur)}
+                />
+                <StatCard
+                  icon={Wallet}
+                  accent="green"
+                  label="Remaining"
+                  value={formatBudget(report.budget_remaining, cur)}
+                />
+              </div>
+              <div className="mt-4">
+                <div className="mb-1.5 flex items-center justify-between text-sm">
+                  <span className="font-medium text-foreground">
+                    Utilisation
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {util.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn("h-full rounded-full transition-all", utilTone)}
+                    style={{ width: `${utilWidth}%` }}
+                  />
+                </div>
+              </div>
+            </ReportGroup>
+
+            {/* Links */}
+            <ReportGroup title="Links">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+                <StatCard
+                  icon={FileText}
+                  accent="blue"
+                  label="Added"
+                  value={report.links_added}
+                />
+                <StatCard
+                  icon={FileText}
+                  accent="green"
+                  label="Published"
+                  value={report.links_published}
+                />
+                <StatCard
+                  icon={FileText}
+                  accent="amber"
+                  label="Pending"
+                  value={report.links_pending}
+                />
+                <StatCard
+                  icon={FileText}
+                  accent="rose"
+                  label="Rejected"
+                  value={report.links_rejected}
+                />
+                <StatCard
+                  icon={Globe}
+                  accent="cyan"
+                  label="Websites used"
+                  value={report.websites_used}
+                />
+              </div>
+            </ReportGroup>
+
+            {/* Payments */}
+            <ReportGroup title="Payments">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+                <StatCard
+                  icon={CreditCard}
+                  accent="green"
+                  label="Paid"
+                  value={formatBudget(report.payments_paid, cur)}
+                />
+                <StatCard
+                  icon={CreditCard}
+                  accent="amber"
+                  label="Pending"
+                  value={formatBudget(report.payments_pending, cur)}
+                />
+                <StatCard
+                  icon={CreditCard}
+                  accent="slate"
+                  label="Count"
+                  value={report.payments_count}
+                />
+              </div>
+            </ReportGroup>
+
+            {/* Tasks + cost per link */}
+            <ReportGroup title="Tasks">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+                <StatCard
+                  icon={CheckSquare}
+                  accent="violet"
+                  label="Tasks completed"
+                  value={`${report.tasks_completed} / ${report.tasks_total}`}
+                />
+                <StatCard
+                  icon={FileBarChart}
+                  accent="brand"
+                  label="Cost per link"
+                  value={
+                    report.cost_per_link != null
+                      ? formatBudget(report.cost_per_link, cur)
+                      : "—"
+                  }
+                />
+              </div>
+            </ReportGroup>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function ReportGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h3>
+      {children}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import type {
   ProjectListParams,
   ProjectMember,
   ProjectOverview,
+  ProjectReport,
   WebsiteUsedItem,
 } from "@/lib/types";
 
@@ -70,6 +71,21 @@ export function getProject(id: string): Promise<ProjectDetail> {
 /** Aggregate budget / link / task / team metrics for a single project. */
 export function getProjectOverview(id: string): Promise<ProjectOverview> {
   return api.get<ProjectOverview>(`/projects/${id}/overview`);
+}
+
+/**
+ * Period-scoped report for a project. Both `start` and `end` (`YYYY-MM-DD`) are
+ * optional — omit both (pass nothing / null) for an All-time report. Only the
+ * provided params are sent.
+ */
+export function getProjectReport(
+  id: string,
+  start?: string | null,
+  end?: string | null,
+): Promise<ProjectReport> {
+  return api.get<ProjectReport>(
+    `/projects/${id}/report${buildQuery({ start, end })}`,
+  );
 }
 
 /** The websites used on a project, with link counts and spend. */

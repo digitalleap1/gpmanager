@@ -416,6 +416,36 @@ export interface ProjectOverview {
   tasks_completed: number;
 }
 
+/**
+ * Period-scoped report for a single project
+ * (`GET /projects/{id}/report?start=&end=`). Budget comes from the project's
+ * budget cycles; spend / links / payments / tasks are counted by date within
+ * the range. Omitting both `start` and `end` reports All-time. A range with no
+ * budget cycle returns `budget_assigned: 0`.
+ */
+export interface ProjectReport {
+  start: string | null;
+  end: string | null;
+  period_label: string;
+  currency: string;
+  budget_assigned: number;
+  budget_spent: number;
+  budget_pending: number;
+  budget_remaining: number;
+  utilization_pct: number;
+  links_added: number;
+  links_published: number;
+  links_pending: number;
+  links_rejected: number;
+  websites_used: number;
+  payments_paid: number;
+  payments_pending: number;
+  payments_count: number;
+  tasks_total: number;
+  tasks_completed: number;
+  cost_per_link: number | null;
+}
+
 /** One website's contribution to a project (`GET /projects/{id}/websites`). */
 export interface WebsiteUsedItem {
   website: string;
