@@ -12,11 +12,22 @@ from app.models.payment import Payment, PaymentComment, PaymentStatusHistory
 from app.schemas.refs import UserRef
 
 PAYMENT_STATUSES = {"pending", "negotiation", "paid", "free", "cancelled", "rejected"}
+# The payment "case" — drives wording + the verified outcome (reversal => the
+# outflow is voided/cancelled; everything else => paid).
+PAYMENT_CASES = {"standard", "advance", "reversal", "other"}
+# Where an assigned request currently sits.
+REQUEST_STAGES = {"assigned", "submitted", "verified", "returned"}
 
 
 def _validate_status(value: str) -> str:
     if value not in PAYMENT_STATUSES:
         raise ValueError(f"status must be one of {sorted(PAYMENT_STATUSES)}")
+    return value
+
+
+def _validate_case(value: str) -> str:
+    if value not in PAYMENT_CASES:
+        raise ValueError(f"payment_case must be one of {sorted(PAYMENT_CASES)}")
     return value
 
 
@@ -52,11 +63,20 @@ class PaymentCreate(BaseModel):
     transaction_id: str | None = Field(default=None, max_length=120)
     remarks: str | None = None
     status: str = "pending"
+    # Assignment workflow: the case + CC watchers. The responsible payer is
+    # attributed_to_id (above); watcher_ids are CC'd (notified, can comment).
+    payment_case: str = "standard"
+    watcher_ids: list[uuid.UUID] = Field(default_factory=list)
 
     @field_validator("status")
     @classmethod
     def _status(cls, value: str) -> str:
         return _validate_status(value)
+
+    @field_validator("payment_case")
+    @classmethod
+    def _case(cls, value: str) -> str:
+        return _validate_case(value)
 
     @field_validator("currency")
     @classmethod
@@ -107,6 +127,31 @@ class PaymentStatusChange(BaseModel):
         return _validate_status(value)
 
 
+class PaymentSubmit(BaseModel):
+    """The assigned payer records that they made the payment, then it returns to
+    the requester to verify. All money fields optional (may be filled already)."""
+
+    transaction_id: str | None = Field(default=None, max_length=120)
+    mode_of_payment: str | None = Field(default=None, max_length=255)
+    amount: float | None = Field(default=None, ge=0)
+    currency: str | None = None
+    payment_date: date | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("currency")
+    @classmethod
+    def _currency(cls, value: str | None) -> str | None:
+        return _validate_currency(value)
+
+
+class PaymentVerify(BaseModel):
+    """The requester checks a submitted payment: approve (-> paid / reversal ->
+    cancelled) or send it back to the payer to fix."""
+
+    approve: bool
+    note: str | None = Field(default=None, max_length=2000)
+
+
 class PaymentStatusHistoryRead(BaseModel):
     from_status: str | None
     to_status: str
@@ -150,12 +195,18 @@ class PaymentListItem(BaseModel):
     transaction_id: str | None
     remarks: str | None
     status: str
+    # Assignment workflow.
+    payment_case: str
+    request_stage: str | None
+    requested_by: UserRef | None
+    watchers: list[UserRef]
     created_at: datetime
     updated_at: datetime
 
     @classmethod
     def from_payment(cls, p: Payment) -> PaymentListItem:
         attributed = p.attributed_to
+        requester = p.created_by_user
         return cls(
             id=p.id,
             client_id=p.client_id,
@@ -165,6 +216,14 @@ class PaymentListItem(BaseModel):
             website_id=p.website_id,
             website_domain=p.website.domain if p.website else None,
             attributed_to=UserRef(id=attributed.id, full_name=attributed.full_name) if attributed else None,
+            payment_case=p.payment_case or "standard",
+            request_stage=p.request_stage,
+            requested_by=UserRef(id=requester.id, full_name=requester.full_name) if requester else None,
+            watchers=[
+                UserRef(id=w.user.id, full_name=w.user.full_name)
+                for w in p.watchers
+                if w.user
+            ],
             via=p.via,
             live_link=p.live_link,
             currency=p.currency or "USD",

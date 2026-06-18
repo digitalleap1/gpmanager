@@ -95,6 +95,34 @@ def sync_assignment_task(
     return existing
 
 
+def set_source_task_status(
+    db: Session,
+    company_id: uuid.UUID,
+    *,
+    source_type: str,
+    source_id: uuid.UUID,
+    status: str,
+) -> Task | None:
+    """Flip the mirrored task's status (e.g. complete it when the payer pays, or
+    reopen it to 'pending' when a payment is sent back). No-op if absent.
+    Caller commits."""
+    from datetime import UTC, datetime
+
+    task = db.scalar(
+        select(Task).where(
+            Task.company_id == company_id,
+            Task.source_type == source_type,
+            Task.source_id == source_id,
+        )
+    )
+    if task is None:
+        return None
+    task.status = status
+    task.completed_at = datetime.now(UTC) if status == "completed" else None
+    db.flush()
+    return task
+
+
 def _record(
     db: Session, actor: User, company_id: uuid.UUID, task: Task, *, action: str
 ) -> None:

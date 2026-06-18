@@ -15,14 +15,24 @@ from app.core.currencies import CURRENCY_CODES, DEFAULT_CURRENCY
 from app.core.exceptions import BadRequest, NotFound, PermissionDenied
 from app.core.permissions import is_manager
 from app.core.scope import accessible_user_ids
-from app.models.payment import Payment, PaymentComment, PaymentStatusHistory
+from app.models.payment import (
+    Payment,
+    PaymentComment,
+    PaymentStatusHistory,
+    PaymentWatcher,
+)
 from app.models.project import Project, ProjectMonthlyBudget
 from app.models.user import User
 from app.models.website import Website
 from app.repositories.payment import PaymentRepository
 from app.repositories.project import BudgetRepository
 from app.schemas.common_bulk import ImportResult
-from app.schemas.payment import PAYMENT_STATUSES, PaymentCreate, PaymentUpdate
+from app.schemas.payment import (
+    PAYMENT_STATUSES,
+    PaymentCreate,
+    PaymentSubmit,
+    PaymentUpdate,
+)
 from app.services.activity import ActivityLogger, jsonable
 from app.services.bulk import (
     normalize_format,
@@ -110,8 +120,13 @@ class PaymentService:
 
     def create(self, data: PaymentCreate) -> Payment:
         payload = self._normalize_money(data.model_dump())
+        watcher_ids = payload.pop("watcher_ids", None) or []
+        # When a payer is assigned, the request enters the workflow at "assigned".
+        if payload.get("attributed_to_id") and not payload.get("request_stage"):
+            payload["request_stage"] = "assigned"
         p = Payment(company_id=self.company_id, created_by=self.user.id, **payload)
         self.payments.add(p)
+        self._set_watchers(p, watcher_ids)
         self.db.add(
             PaymentStatusHistory(
                 payment_id=p.id,
@@ -159,7 +174,122 @@ class PaymentService:
                 entity_type="payment",
                 entity_id=p.id,
             )
+        # CC the watchers (looped in, not the payer).
+        self._notify_watchers(
+            p, notifier, title="Payment request (CC)",
+            body=f"{self.user.full_name} added you (CC) to a payment request.",
+        )
         self._sync_assignment_task(p)
+        self.db.commit()
+        self.db.refresh(p)
+        return p
+
+    def submit(self, payment_id: uuid.UUID, data: PaymentSubmit) -> Payment:
+        """The assigned payer records the payment, then it returns to the
+        requester to verify. Allowed for the payer, the requester, or a manager."""
+        p = self.get(payment_id)
+        allowed = (
+            is_manager(self.user)
+            or p.attributed_to_id == self.user.id
+            or p.created_by == self.user.id
+        )
+        if not allowed:
+            raise PermissionDenied("Only the assigned payer can submit this payment")
+        money = self._normalize_money(
+            {
+                k: v
+                for k, v in {
+                    "amount": data.amount,
+                    "currency": data.currency,
+                }.items()
+                if v is not None
+            },
+            existing=p,
+        )
+        for key, value in money.items():
+            setattr(p, key, value)
+        if data.transaction_id is not None:
+            p.transaction_id = data.transaction_id
+        if data.mode_of_payment is not None:
+            p.mode_of_payment = data.mode_of_payment
+        if data.payment_date is not None:
+            p.payment_date = data.payment_date
+        p.request_stage = "submitted"
+        # The payer's "do the payment" task is done; the verify step is next.
+        from app.services.auto_task import SOURCE_PAYMENT, set_source_task_status
+
+        set_source_task_status(
+            self.db, self.company_id, source_type=SOURCE_PAYMENT,
+            source_id=p.id, status="completed",
+        )
+        if data.note:
+            self.db.add(
+                PaymentComment(payment_id=p.id, author_id=self.user.id, body=data.note)
+            )
+        self.activity.record(
+            company_id=self.company_id, user_id=self.user.id, action="payment.submitted",
+            module="payment", entity_type="payment", entity_id=p.id,
+            new={"transaction_id": p.transaction_id, "stage": p.request_stage},
+        )
+        notifier = Notifier(self.db)
+        body = f"{self.user.full_name} submitted a payment for you to verify."
+        if p.created_by and p.created_by != self.user.id:
+            notifier.notify(
+                company_id=self.company_id, user_id=p.created_by, type="payment_submitted",
+                title="Payment to verify", body=body, entity_type="payment", entity_id=p.id,
+            )
+        notifier.notify_admins(
+            company_id=self.company_id, type="payment_submitted", title="Payment submitted",
+            body=body, entity_type="payment", entity_id=p.id, exclude=self.user.id,
+        )
+        self._notify_watchers(
+            p, notifier, title="Payment submitted (CC)",
+            body=f"{self.user.full_name} submitted a payment you're CC'd on.",
+        )
+        self.db.commit()
+        self.db.refresh(p)
+        return p
+
+    def verify(self, payment_id: uuid.UUID, approve: bool, note: str | None) -> Payment:
+        """The requester checks a submitted payment: approve it (-> paid, or for
+        a reversal -> cancelled) or send it back to the payer to fix."""
+        p = self.get(payment_id)
+        allowed = is_manager(self.user) or p.created_by == self.user.id
+        if not allowed:
+            raise PermissionDenied("Only the requester or an admin can verify this payment")
+        from app.services.auto_task import SOURCE_PAYMENT, set_source_task_status
+
+        if approve:
+            p.request_stage = "verified"
+            outcome = "cancelled" if p.payment_case == "reversal" else "paid"
+            if p.status != outcome:
+                self._apply_status(p, outcome, note or f"verified ({p.payment_case})")
+        else:
+            p.request_stage = "returned"
+            # Reopen the payer's task so they can fix + resubmit.
+            set_source_task_status(
+                self.db, self.company_id, source_type=SOURCE_PAYMENT,
+                source_id=p.id, status="pending",
+            )
+            notifier = Notifier(self.db)
+            if p.attributed_to_id and p.attributed_to_id != self.user.id:
+                notifier.notify(
+                    company_id=self.company_id, user_id=p.attributed_to_id,
+                    type="payment_returned", title="Payment sent back",
+                    body=f"{self.user.full_name} sent a payment back for changes."
+                    + (f" Note: {note}" if note else ""),
+                    entity_type="payment", entity_id=p.id,
+                )
+        if note:
+            self.db.add(
+                PaymentComment(payment_id=p.id, author_id=self.user.id, body=note)
+            )
+        self.activity.record(
+            company_id=self.company_id, user_id=self.user.id,
+            action="payment.verified" if approve else "payment.returned",
+            module="payment", entity_type="payment", entity_id=p.id,
+            new={"stage": p.request_stage, "status": p.status},
+        )
         self.db.commit()
         self.db.refresh(p)
         return p
@@ -251,6 +381,29 @@ class PaymentService:
         self.db.commit()
 
     # --- internals ---
+    def _set_watchers(self, p: Payment, user_ids: list[uuid.UUID]) -> None:
+        """Attach CC watchers, skipping the payer/requester and duplicates."""
+        seen: set[uuid.UUID] = set()
+        skip = {p.attributed_to_id, p.created_by, self.user.id}
+        for uid in user_ids:
+            if uid in seen or uid in skip:
+                continue
+            seen.add(uid)
+            p.watchers.append(PaymentWatcher(payment_id=p.id, user_id=uid))
+
+    def _notify_watchers(self, p: Payment, notifier: Notifier, *, title: str, body: str) -> None:
+        for w in p.watchers:
+            if w.user_id and w.user_id != self.user.id:
+                notifier.notify(
+                    company_id=self.company_id,
+                    user_id=w.user_id,
+                    type="payment_cc",
+                    title=title,
+                    body=body,
+                    entity_type="payment",
+                    entity_id=p.id,
+                )
+
     def _sync_assignment_task(self, p: Payment) -> None:
         """Mirror the payment's assigned person as a Task so it shows on /tasks."""
         if not p.attributed_to_id:

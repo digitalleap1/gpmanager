@@ -246,11 +246,16 @@ class WorkflowReassign(BaseModel):
 
 
 class LinkPaymentRequest(BaseModel):
-    """Raise a pending payment for a guest-post link (defaults to its price)."""
+    """Raise a pending payment for a guest-post link (defaults to its price),
+    optionally assigning a payer + CC watchers and a case."""
 
     amount: float | None = Field(default=None, ge=0)
     currency: str | None = Field(default=None, max_length=3)
     note: str | None = Field(default=None, max_length=500)
+    attributed_to_id: uuid.UUID | None = None
+    payment_case: str = "standard"
+    mode_of_payment: str | None = Field(default=None, max_length=255)
+    watcher_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class BulkLinkItem(BaseModel):
@@ -267,11 +272,16 @@ class BulkLinkItem(BaseModel):
     payment_mode: str | None = Field(default=None, max_length=60)
     # When true, also raise a pending payment for this link (routed to admins).
     request_payment: bool = False
+    # Optional per-row payer + case for the raised payment.
+    attributed_to_id: uuid.UUID | None = None
+    payment_case: str = "standard"
 
 
 class BulkLinksCreate(BaseModel):
     project_id: uuid.UUID
     links: list[BulkLinkItem] = Field(min_length=1, max_length=200)
+    # CC watchers applied to every payment raised in this batch.
+    watcher_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class BulkLinksResult(BaseModel):

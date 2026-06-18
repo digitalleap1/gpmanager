@@ -19,7 +19,9 @@ from app.schemas.payment import (
     PaymentDetail,
     PaymentListItem,
     PaymentStatusChange,
+    PaymentSubmit,
     PaymentUpdate,
+    PaymentVerify,
 )
 from app.services.ledger import LedgerService
 from app.services.payment import PaymentService
@@ -135,6 +137,26 @@ def change_status(
 ) -> PaymentListItem:
     return PaymentListItem.from_payment(
         PaymentService(db, user).set_status(payment_id, body.status, body.note)
+    )
+
+
+# --- assignment workflow: payer submits -> requester verifies ---
+@router.post("/{payment_id}/submit", response_model=PaymentListItem)
+def submit_payment(
+    payment_id: uuid.UUID, body: PaymentSubmit, user: CurrentUser, db: DbSession
+) -> PaymentListItem:
+    """The assigned payer records the payment; it then returns to the requester."""
+    return PaymentListItem.from_payment(PaymentService(db, user).submit(payment_id, body))
+
+
+@router.post("/{payment_id}/verify", response_model=PaymentListItem)
+def verify_payment(
+    payment_id: uuid.UUID, body: PaymentVerify, user: CurrentUser, db: DbSession
+) -> PaymentListItem:
+    """The requester approves a submitted payment (-> paid / reversal -> cancelled)
+    or sends it back to the payer for changes."""
+    return PaymentListItem.from_payment(
+        PaymentService(db, user).verify(payment_id, body.approve, body.note)
     )
 
 

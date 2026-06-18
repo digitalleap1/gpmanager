@@ -49,9 +49,14 @@ class GuestPostService:
         amount: float | None = None,
         currency: str | None = None,
         note: str | None = None,
+        attributed_to_id: uuid.UUID | None = None,
+        payment_case: str = "standard",
+        mode_of_payment: str | None = None,
+        watcher_ids: list[uuid.UUID] | None = None,
     ):
-        """Raise a pending Payment for this guest-post link, routed to the admins.
-        Shows up on /payments + the ledger. Returns the created Payment."""
+        """Raise a pending Payment for this guest-post link, routed to the admins
+        (and any assigned payer + CC watchers). Shows up on /payments + the
+        ledger. Returns the created Payment."""
         from app.schemas.payment import PaymentCreate
         from app.services.payment import PaymentService
 
@@ -75,13 +80,20 @@ class GuestPostService:
                 live_link=gp.live_link,
                 status="pending",
                 remarks=remarks,
+                attributed_to_id=attributed_to_id,
+                payment_case=payment_case,
+                mode_of_payment=mode_of_payment,
+                watcher_ids=watcher_ids or [],
             )
         )
 
-    def bulk_create(self, project_id: uuid.UUID, links) -> dict:
+    def bulk_create(
+        self, project_id: uuid.UUID, links, watcher_ids: list[uuid.UUID] | None = None
+    ) -> dict:
         """Add MANY guest-post links to a project at once. For rows flagged
-        `request_payment`, also raise a pending Payment (routed to admins, defaults
-        to the row's price). Returns {created, payments_requested}."""
+        `request_payment`, also raise a pending Payment (routed to admins + any
+        per-row payer + the shared CC watchers, defaults to the row's price).
+        Returns {created, payments_requested}."""
         from decimal import Decimal
 
         from app.schemas.payment import PaymentCreate
@@ -126,6 +138,9 @@ class GuestPostService:
                         live_link=url or None,
                         status="pending",
                         remarks=f"Payment for '{name or url}'",
+                        attributed_to_id=item.attributed_to_id,
+                        payment_case=item.payment_case,
+                        watcher_ids=watcher_ids or [],
                     )
                 )
                 payments += 1

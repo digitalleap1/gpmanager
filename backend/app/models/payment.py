@@ -6,7 +6,17 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -57,6 +67,11 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     transaction_id: Mapped[str | None] = mapped_column(String(120))
     remarks: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    # The payment "case": standard | advance | reversal | other (drives wording
+    # + the verified outcome). request_stage tracks the assignment workflow:
+    # assigned -> submitted -> verified | returned (None for un-assigned rows).
+    payment_case: Mapped[str] = mapped_column(String(20), default="standard", nullable=False)
+    request_stage: Mapped[str | None] = mapped_column(String(20))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
@@ -72,6 +87,14 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     attributed_to: Mapped[User | None] = relationship(
         foreign_keys=[attributed_to_id], lazy="joined"
     )
+    created_by_user: Mapped[User | None] = relationship(
+        foreign_keys=[created_by], lazy="joined"
+    )
+    watchers: Mapped[list[PaymentWatcher]] = relationship(
+        back_populates="payment",
+        cascade="all, delete-orphan",
+        order_by="PaymentWatcher.created_at",
+    )
     status_history: Mapped[list[PaymentStatusHistory]] = relationship(
         back_populates="payment",
         cascade="all, delete-orphan",
@@ -82,6 +105,27 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="PaymentComment.created_at",
     )
+
+
+class PaymentWatcher(UUIDPrimaryKeyMixin, Base):
+    """A CC watcher on a payment request: looped in (notified, can comment) but
+    not the responsible payer (that is payments.attributed_to_id)."""
+
+    __tablename__ = "payment_watchers"
+    __table_args__ = (UniqueConstraint("payment_id", "user_id", name="uq_payment_watcher"),)
+
+    payment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("payments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    payment: Mapped[Payment] = relationship(back_populates="watchers")
+    user: Mapped[User] = relationship(foreign_keys=[user_id], lazy="joined")
 
 
 class PaymentComment(UUIDPrimaryKeyMixin, Base):

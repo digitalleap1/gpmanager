@@ -83,7 +83,9 @@ def bulk_create_links(
     """Add many links to a project at once; flagged rows also raise a pending
     payment (routed to admins) that shows on /payments + the ledger."""
     return BulkLinksResult(
-        **GuestPostService(db, user).bulk_create(body.project_id, body.links)
+        **GuestPostService(db, user).bulk_create(
+            body.project_id, body.links, body.watcher_ids
+        )
     )
 
 
@@ -238,9 +240,17 @@ def publish_guest_post(
 def request_link_payment(
     gp_id: uuid.UUID, body: LinkPaymentRequest, user: CurrentUser, db: DbSession
 ) -> dict[str, str]:
-    """Raise a pending payment for this link (routed to admins, shows on /payments)."""
+    """Raise a pending payment for this link (routed to admins + any assigned
+    payer/CC, shows on /payments)."""
     pay = GuestPostService(db, user).request_payment(
-        gp_id, body.amount, body.currency, body.note
+        gp_id,
+        body.amount,
+        body.currency,
+        body.note,
+        attributed_to_id=body.attributed_to_id,
+        payment_case=body.payment_case,
+        mode_of_payment=body.mode_of_payment,
+        watcher_ids=body.watcher_ids,
     )
     return {"payment_id": str(pay.id), "status": "requested"}
 
