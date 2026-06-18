@@ -159,6 +159,7 @@ class PaymentService:
                 entity_type="payment",
                 entity_id=p.id,
             )
+        self._sync_assignment_task(p)
         self.db.commit()
         self.db.refresh(p)
         return p
@@ -217,6 +218,7 @@ class PaymentService:
             old=jsonable(old),
             new=jsonable(changes),
         )
+        self._sync_assignment_task(p)
         self.db.commit()
         self.db.refresh(p)
         return p
@@ -249,6 +251,30 @@ class PaymentService:
         self.db.commit()
 
     # --- internals ---
+    def _sync_assignment_task(self, p: Payment) -> None:
+        """Mirror the payment's assigned person as a Task so it shows on /tasks."""
+        if not p.attributed_to_id:
+            return
+        from app.services.auto_task import SOURCE_PAYMENT, sync_assignment_task
+
+        label = (p.website.domain if p.website else None) or p.live_link or "guest post"
+        amount = f"{p.currency} {p.amount}" if p.amount is not None else (p.currency or "")
+        description = f"Payment {amount} ({p.status}).".strip()
+        if p.project is not None:
+            description = f"Payment {amount} for {p.project.name} ({p.status}).".strip()
+        sync_assignment_task(
+            self.db,
+            self.user,
+            company_id=self.company_id,
+            source_type=SOURCE_PAYMENT,
+            source_id=p.id,
+            assigned_to=p.attributed_to_id,
+            name=f"Payment: {label}"[:200],
+            description=description,
+            project_id=p.project_id,
+            due_date=None,
+        )
+
     def _apply_status(self, p: Payment, new_status: str, note: str | None) -> None:
         old = p.status
         p.status = new_status

@@ -204,6 +204,7 @@ class GuestPostService:
             entity_id=gp.id,
             exclude=self.user.id,
         )
+        self._sync_assignment_task(gp)
         self.db.commit()
         self.db.refresh(gp)
         return gp
@@ -231,6 +232,7 @@ class GuestPostService:
             old=jsonable(old),
             new=jsonable(changes),
         )
+        self._sync_assignment_task(gp)
         self.db.commit()
         self.db.refresh(gp)
         return gp
@@ -391,6 +393,28 @@ class GuestPostService:
         self.db.commit()
 
     # --- internals ---
+    def _sync_assignment_task(self, gp: GuestPost) -> None:
+        """Mirror the link's assignee as a Task so it shows on /tasks for them."""
+        from app.services.auto_task import SOURCE_GUEST_POST, sync_assignment_task
+
+        label = gp.website_name or gp.live_link or "link"
+        where = f" for {gp.project.name}" if gp.project else ""
+        description = f"Guest-post link{where}."
+        if gp.live_link:
+            description += f" {gp.live_link}"
+        sync_assignment_task(
+            self.db,
+            self.user,
+            company_id=self.company_id,
+            source_type=SOURCE_GUEST_POST,
+            source_id=gp.id,
+            assigned_to=gp.assigned_user_id,
+            name=f"Guest post: {label}"[:200],
+            description=description,
+            project_id=gp.project_id,
+            due_date=gp.live_link_date,
+        )
+
     def _apply_status(self, gp: GuestPost, new_status: str, note: str | None) -> None:
         old = gp.status
         gp.status = new_status

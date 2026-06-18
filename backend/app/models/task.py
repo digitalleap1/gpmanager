@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -30,6 +30,12 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     due_date: Mapped[date | None] = mapped_column(Date)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Origin of an auto-created task (e.g. assigning a person on a guest-post
+    # link or a payment). NULL for ordinary, manually-created tasks. The
+    # (source_type, source_id) pair is the idempotency key so editing the source
+    # updates the same task instead of spawning duplicates.
+    source_type: Mapped[str | None] = mapped_column(String(20))
+    source_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
 
     project: Mapped[Project | None] = relationship(lazy="joined")
     assigned_user: Mapped[User | None] = relationship(foreign_keys=[assigned_to], lazy="joined")
