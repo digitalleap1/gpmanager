@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Route,
   ScrollText,
   ShieldCheck,
   Trash2,
@@ -41,7 +40,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/workflow", label: "Workflow Guide", icon: Route },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/guest-posts", label: "Guest Post Links", icon: FileText },
   { href: "/websites", label: "Websites", icon: Globe },

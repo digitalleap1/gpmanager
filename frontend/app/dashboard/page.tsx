@@ -13,7 +13,6 @@ import {
   Link2,
   PauseCircle,
   Plus,
-  Route,
   Target,
   Upload,
   UserPlus,
@@ -175,13 +174,6 @@ export default function DashboardPage() {
                 A live snapshot of projects, links, payments, and your team.
               </p>
             </div>
-            <Link
-              href="/workflow"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-sm font-medium text-primary transition hover:bg-primary/10"
-            >
-              <Route className="h-4 w-4" />
-              New here? See the Workflow Guide
-            </Link>
           </div>
 
           {/* Quick actions */}
