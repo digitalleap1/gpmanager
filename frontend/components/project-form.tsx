@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import type {
-  BudgetPeriod,
+  BudgetPeriodType,
   CountryRef,
   CurrencyRef,
   NicheRef,
@@ -19,7 +19,7 @@ import {
 
 const STATUS_OPTIONS = ["active", "completed", "hold", "cancelled"] as const;
 
-const BUDGET_PERIODS: { value: BudgetPeriod; label: string; per: string }[] = [
+const BUDGET_PERIODS: { value: BudgetPeriodType; label: string; per: string }[] = [
   { value: "monthly", label: "Monthly", per: "per month" },
   { value: "weekly", label: "Weekly", per: "per week" },
   { value: "daily", label: "Daily", per: "per day" },
@@ -80,7 +80,7 @@ export function ProjectForm({
   const [budgetCurrency, setBudgetCurrency] = useState(
     initial?.budget_currency ?? "USD",
   );
-  const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>(
+  const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriodType>(
     initial?.budget_period ?? "monthly",
   );
   const [budgetStartDate, setBudgetStartDate] = useState(
@@ -357,7 +357,7 @@ export function ProjectForm({
           <select
             id="budget_period"
             value={budgetPeriod}
-            onChange={(e) => setBudgetPeriod(e.target.value as BudgetPeriod)}
+            onChange={(e) => setBudgetPeriod(e.target.value as BudgetPeriodType)}
             className={inputClass}
           >
             {BUDGET_PERIODS.map((p) => (

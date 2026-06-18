@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import { downloadFile, uploadFile } from "@/lib/file-transfer";
 import type {
   AuditLogRead,
+  BudgetPeriod,
+  BudgetSummary,
   BulkAssignResult,
   BulkImportResult,
   Checklist,
@@ -353,5 +355,51 @@ export function setBudget(
 ): Promise<MonthlyBudget> {
   return api.put<MonthlyBudget>(`/projects/${id}/budgets/${year}/${month}`, {
     budget_amount: budgetAmount,
+  });
+}
+
+/* --- Budget cycles (period-based budgets) --- */
+
+/**
+ * Aggregate budget snapshot for a project, including the `auto_renew` flag.
+ * Readable by anyone with project access; only the mutating endpoints below
+ * are manager-only on the backend.
+ */
+export function getBudgetSummary(projectId: string): Promise<BudgetSummary> {
+  return api.get<BudgetSummary>(`/budget/projects/${projectId}/summary`);
+}
+
+/** List a project's budget periods, newest first. */
+export function listBudgetPeriods(projectId: string): Promise<BudgetPeriod[]> {
+  return api.get<BudgetPeriod[]>(`/budget/projects/${projectId}/periods`);
+}
+
+/** Force-generate the current/missing budget periods now. Returns the list. */
+export function renewBudgetPeriods(projectId: string): Promise<BudgetPeriod[]> {
+  return api.post<BudgetPeriod[]>(
+    `/budget/projects/${projectId}/periods/renew`,
+    {},
+  );
+}
+
+/** Edit a single budget period's amount. Returns the updated period. */
+export function setBudgetPeriodAmount(
+  projectId: string,
+  periodId: string,
+  amount: number,
+): Promise<BudgetPeriod> {
+  return api.put<BudgetPeriod>(
+    `/budget/projects/${projectId}/periods/${periodId}`,
+    { amount },
+  );
+}
+
+/** Toggle whether new periods auto-renew at the base amount. */
+export function setBudgetAutoRenew(
+  projectId: string,
+  autoRenew: boolean,
+): Promise<BudgetSummary> {
+  return api.patch<BudgetSummary>(`/budget/projects/${projectId}/auto-renew`, {
+    auto_renew: autoRenew,
   });
 }

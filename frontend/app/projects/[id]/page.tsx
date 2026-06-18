@@ -42,9 +42,11 @@ import { RequestPaymentModal } from "@/components/request-payment-modal";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { TaskStatusBadge } from "@/components/task-status-badge";
+import { useAuth } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api";
 import type {
   AuditLogRead,
+  BudgetPeriod,
   BulkLinksResult,
   GuestPostListItem,
   MonthlyBudget,
@@ -58,7 +60,7 @@ import type {
   UserSummary,
   WebsiteUsedItem,
 } from "@/lib/types";
-import { formatDate, monthLabel, relativeTime } from "@/lib/utils";
+import { cn, formatDate, monthLabel, relativeTime } from "@/lib/utils";
 import { listGuestPosts } from "@/services/guest-post-service";
 import { getUsers } from "@/services/lookup-service";
 import { listPayments } from "@/services/payment-service";
@@ -68,10 +70,15 @@ import {
   archiveProject,
   getProject,
   getProjectActivity,
+  getBudgetSummary,
   getProjectOverview,
   getProjectWebsites,
+  listBudgetPeriods,
   removeMember,
+  renewBudgetPeriods,
   setBudget,
+  setBudgetAutoRenew,
+  setBudgetPeriodAmount,
   setGoal,
 } from "@/services/project-service";
 import { listTasks } from "@/services/task-service";
@@ -179,6 +186,15 @@ function ProjectHub({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const activeTab: TabKey = isTabKey(tabParam) ? tabParam : "overview";
+
+  // Budget cycle controls are manager-only on the backend (team_lead / admin).
+  const { user } = useAuth();
+  const isManager = Boolean(
+    user &&
+      (user.is_superuser ||
+        user.roles.includes("admin") ||
+        user.roles.includes("team_lead")),
+  );
 
   // Core project record (always loaded; powers the header + several tabs).
   const [project, setProject] = useState<ProjectDetail | null>(null);
@@ -409,6 +425,7 @@ function ProjectHub({ id }: { id: string }) {
               budgets={budgets}
               overview={overview}
               overviewLoading={overviewLoading}
+              isManager={isManager}
               onSaveGoal={handleSaveGoal}
               onSaveBudget={handleSaveBudget}
             />
@@ -742,6 +759,7 @@ function BudgetTab({
   budgets,
   overview,
   overviewLoading,
+  isManager,
   onSaveGoal,
   onSaveBudget,
 }: {
@@ -750,6 +768,7 @@ function BudgetTab({
   budgets: MonthlyBudget[];
   overview: ProjectOverview | null;
   overviewLoading: boolean;
+  isManager: boolean;
   onSaveGoal: (month: number, value: number) => Promise<void>;
   onSaveBudget: (month: number, value: number) => Promise<void>;
 }) {
@@ -780,6 +799,8 @@ function BudgetTab({
         <p className="text-sm text-muted-foreground">Loading summary…</p>
       ) : null}
 
+      <BudgetCycles projectId={project.id} isManager={isManager} />
+
       <GoalsGrid
         year={project.current_year}
         goals={goals}
@@ -791,6 +812,382 @@ function BudgetTab({
         currency={cur}
         onSave={onSaveBudget}
       />
+    </div>
+  );
+}
+
+/* ================================================================== *
+ * Budget Cycles — period-based budgets with auto-renew + per-period edit
+ * ================================================================== */
+
+/**
+ * Format an amount in a given currency code, falling back to a `CODE amount`
+ * string for non-ISO codes — mirrors the page-level `formatBudget`, but the
+ * currency arrives per-period rather than from the overview.
+ */
+function BudgetCycles({
+  projectId,
+  isManager,
+}: {
+  projectId: string;
+  isManager: boolean;
+}) {
+  const [periods, setPeriods] = useState<BudgetPeriod[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [autoRenew, setAutoRenew] = useState(false);
+  const [togglingRenew, setTogglingRenew] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch the periods + the auto-renew flag (from the summary) together.
+      const [periodList, summary] = await Promise.all([
+        listBudgetPeriods(projectId),
+        getBudgetSummary(projectId),
+      ]);
+      setPeriods(periodList);
+      setAutoRenew(summary.auto_renew);
+    } catch (err) {
+      setError(errMsg(err, "Unable to load budget periods."));
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleToggleAutoRenew(next: boolean) {
+    setActionError(null);
+    setTogglingRenew(true);
+    // Optimistic — revert on failure.
+    setAutoRenew(next);
+    try {
+      const summary = await setBudgetAutoRenew(projectId, next);
+      setAutoRenew(summary.auto_renew);
+      // A flipped flag changes whether the current period carries a task, so
+      // refresh the list to reflect the new state.
+      await load();
+    } catch (err) {
+      setAutoRenew(!next);
+      setActionError(
+        err instanceof ApiError && err.status === 403
+          ? "Only team leads or admins can manage budgets."
+          : errMsg(err, "Unable to update auto-renew."),
+      );
+    } finally {
+      setTogglingRenew(false);
+    }
+  }
+
+  async function handleRenewNow() {
+    setActionError(null);
+    setRenewing(true);
+    try {
+      setPeriods(await renewBudgetPeriods(projectId));
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError && err.status === 403
+          ? "Only team leads or admins can manage budgets."
+          : errMsg(err, "Unable to renew budget periods."),
+      );
+    } finally {
+      setRenewing(false);
+    }
+  }
+
+  async function handleSavePeriodAmount(periodId: string, amount: number) {
+    const updated = await setBudgetPeriodAmount(projectId, periodId, amount);
+    setPeriods((prev) => prev.map((p) => (p.id === periodId ? updated : p)));
+  }
+
+  const busy = togglingRenew || renewing;
+
+  return (
+    <section className="rounded-xl border border-border bg-card text-card-foreground shadow-sm">
+      {/* Header card: auto-renew toggle + explanation + renew now */}
+      <div className="border-b border-border px-6 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[#1A1F4D]">
+              Budget Cycles
+            </h2>
+            <p className="mt-1 max-w-xl text-xs text-muted-foreground">
+              New periods auto-fill the base amount and push a budget task to
+              the assignee.
+            </p>
+          </div>
+          {isManager && (
+            <div className="flex flex-wrap items-center gap-3">
+              <label
+                className={cn(
+                  "inline-flex items-center gap-2 text-sm font-medium text-foreground",
+                  togglingRenew && "opacity-60",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={autoRenew}
+                  disabled={busy}
+                  onChange={(e) => void handleToggleAutoRenew(e.target.checked)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-ring disabled:opacity-50"
+                />
+                Auto-renew
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleRenewNow()}
+                disabled={busy}
+                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+              >
+                {renewing ? "Renewing…" : "Renew now"}
+              </button>
+            </div>
+          )}
+        </div>
+        {actionError && (
+          <p
+            role="alert"
+            className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {actionError}
+          </p>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="px-6 py-10 text-center">
+          <p className="text-sm text-muted-foreground">Loading periods…</p>
+        </div>
+      ) : error ? (
+        <div className="px-6 py-10 text-center">
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="mt-3 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+          >
+            Try again
+          </button>
+        </div>
+      ) : periods.length === 0 ? (
+        <div className="px-6 py-12 text-center">
+          <p className="text-sm text-muted-foreground">
+            No budget periods yet — set a budget amount + start date to begin,
+            then Renew now.
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-6 py-3 font-medium">Period</th>
+                <th className="px-6 py-3 text-right font-medium">Budget</th>
+                <th className="px-6 py-3 text-right font-medium">Spent</th>
+                <th className="px-6 py-3 text-right font-medium">Remaining</th>
+                <th className="px-6 py-3 font-medium">Utilisation</th>
+                <th className="px-6 py-3 font-medium">Task</th>
+                <th className="px-6 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {periods.map((p) => (
+                <BudgetPeriodRow
+                  key={p.id}
+                  period={p}
+                  isManager={isManager}
+                  onSaveAmount={handleSavePeriodAmount}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BudgetPeriodRow({
+  period,
+  isManager,
+  onSaveAmount,
+}: {
+  period: BudgetPeriod;
+  isManager: boolean;
+  onSaveAmount: (periodId: string, amount: number) => Promise<void>;
+}) {
+  const cur = period.currency;
+  const util = period.utilization_pct;
+  const barWidth = Math.max(0, Math.min(100, util));
+  const barTone =
+    util >= 100 ? "bg-red-500" : util >= 80 ? "bg-amber-500" : "bg-primary";
+
+  return (
+    <tr className="border-b border-border last:border-0 hover:bg-accent/40">
+      <td className="px-6 py-3">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-foreground">{period.label}</span>
+          {period.is_current && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+              Current
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="px-6 py-2 text-right">
+        {isManager ? (
+          <EditableCurrencyCell
+            value={period.budget}
+            currency={cur}
+            onSave={(v) => onSaveAmount(period.id, v)}
+          />
+        ) : (
+          <span>{formatBudget(period.budget, cur)}</span>
+        )}
+      </td>
+      <td className="px-6 py-3 text-right text-muted-foreground">
+        {formatBudget(period.spent, cur)}
+      </td>
+      <td className="px-6 py-3 text-right text-muted-foreground">
+        {formatBudget(period.remaining, cur)}
+      </td>
+      <td className="px-6 py-3">
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full transition-all", barTone)}
+              style={{ width: `${barWidth}%` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {util.toFixed(0)}%
+          </span>
+        </div>
+      </td>
+      <td className="px-6 py-3">
+        {period.task_status ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <TaskStatusBadge status={period.task_status} />
+            {period.assignee && (
+              <span className="text-xs text-muted-foreground">
+                {period.assignee.full_name}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      <td className="px-6 py-3">
+        <span
+          className={cn(
+            "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+            period.status === "open"
+              ? "bg-green-100 text-green-700"
+              : "bg-slate-100 text-slate-700",
+          )}
+        >
+          {period.status === "open" ? "Open" : "Closed"}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * Inline-editable currency cell for a budget period: click to edit, Enter/blur
+ * to save, Esc to cancel. Disabled while saving; surfaces a per-cell error
+ * (including the 403 "managers only" message) below the value.
+ */
+function EditableCurrencyCell({
+  value,
+  currency,
+  onSave,
+}: {
+  value: number;
+  currency: string;
+  onSave: (next: number) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function commit() {
+    const parsed = Number(draft);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed === value) {
+      setEditing(false);
+      setDraft(String(value));
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      await onSave(parsed);
+      setEditing(false);
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 403
+          ? "Only team leads or admins can manage budgets."
+          : errMsg(e, "Couldn't save."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        type="number"
+        min={0}
+        autoFocus
+        value={draft}
+        disabled={saving}
+        aria-label="Budget amount"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void commit();
+          if (e.key === "Escape") {
+            setDraft(String(value));
+            setErr(null);
+            setEditing(false);
+          }
+        }}
+        className="w-24 rounded border border-input bg-background px-2 py-1 text-right text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end">
+      <button
+        type="button"
+        onClick={() => {
+          setDraft(String(value));
+          setErr(null);
+          setEditing(true);
+        }}
+        className="inline-flex items-center gap-1 rounded px-2 py-1 text-right text-sm hover:bg-accent"
+        title="Click to edit"
+      >
+        {formatBudget(value, currency)}
+        <Pencil className="h-3 w-3 text-muted-foreground" />
+      </button>
+      {err && (
+        <span role="alert" className="mt-0.5 text-[10px] text-destructive">
+          {err}
+        </span>
+      )}
     </div>
   );
 }

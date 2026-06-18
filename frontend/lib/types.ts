@@ -260,7 +260,7 @@ export interface UserUpdate {
 export type ProjectStatus = "active" | "completed" | "hold" | "cancelled";
 
 /** How the budget amount on a project is metered. */
-export type BudgetPeriod = "monthly" | "weekly" | "daily";
+export type BudgetPeriodType = "monthly" | "weekly" | "daily";
 
 export interface ProjectListItem {
   id: string;
@@ -269,7 +269,7 @@ export interface ProjectListItem {
   is_archived: boolean;
   monthly_budget: number;
   budget_currency: string;
-  budget_period: BudgetPeriod;
+  budget_period: BudgetPeriodType;
   budget_start_date: string | null;
   budget_end_date: string | null;
   cost_per_link_target: number | null;
@@ -297,6 +297,71 @@ export interface MonthlyBudget {
   month: number;
   budget_amount: number;
   spent_amount: number;
+}
+
+/* --- Budget Cycles (`/budget/projects/{id}/...`) --- */
+
+/** Whether a budget period is still accepting spend, or has been closed. */
+export type BudgetPeriodStatus = "open" | "closed";
+
+/**
+ * One calendar period (month / week / day) of a project's budget, with its own
+ * budget / spent / remaining / utilisation and the recurring "budget" task
+ * pushed to the assignee. Returned by the `/budget/projects/{id}/periods`
+ * endpoints, newest first.
+ */
+export interface BudgetPeriod {
+  id: string;
+  label: string;
+  period_type: BudgetPeriodType;
+  start_date: string;
+  end_date: string;
+  is_current: boolean;
+  currency: string;
+  budget: number;
+  spent: number;
+  pending: number;
+  remaining: number;
+  utilization_pct: number;
+  status: BudgetPeriodStatus;
+  task_id: string | null;
+  task_status: string | null;
+  assignee: UserRef | null;
+}
+
+/**
+ * Aggregate budget snapshot for a project (`/budget/projects/{id}` family).
+ * Now also reports whether new periods auto-renew at the base amount.
+ */
+export interface BudgetSummary {
+  project_id: string;
+  project_name: string;
+  currency: string;
+  period: BudgetPeriodType;
+  auto_renew: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  budget: number;
+  spent: number;
+  pending: number;
+  remaining: number;
+  utilization_pct: number;
+  links_published: number;
+  websites_count: number;
+  cost_per_link: number | null;
+  cost_per_website: number | null;
+  cost_per_link_target: number | null;
+}
+
+/** Body for setting a project's budget. Every field is optional. */
+export interface BudgetSetRequest {
+  amount?: number;
+  period?: BudgetPeriodType;
+  currency?: string;
+  cost_per_link_target?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  auto_renew?: boolean;
 }
 
 export interface ProjectMember {
@@ -442,7 +507,7 @@ export interface ProjectCreate {
   member_ids?: string[];
   monthly_budget?: number;
   budget_currency?: string;
-  budget_period?: BudgetPeriod;
+  budget_period?: BudgetPeriodType;
   budget_start_date?: string | null;
   budget_end_date?: string | null;
   cost_per_link_target?: number | null;
