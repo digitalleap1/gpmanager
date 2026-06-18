@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Pencil } from "lucide-react";
+import { Check, Lock, Pencil } from "lucide-react";
 import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 
@@ -82,13 +82,20 @@ export default function TaskDetailPage({
             >
               ← Back to list
             </Link>
-            <Link
-              href={`/tasks/${id}/edit`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Link>
+            {task.locked ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700">
+                <Lock className="h-4 w-4" />
+                Locked
+              </span>
+            ) : (
+              <Link
+                href={`/tasks/${id}/edit`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Link>
+            )}
           </div>
 
           {/* Overview */}
@@ -97,6 +104,12 @@ export default function TaskDetailPage({
               <h2 className="text-xl font-semibold">{task.name}</h2>
               <TaskStatusBadge status={task.status} />
               <TaskPriorityBadge priority={task.priority} />
+              {task.locked && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  <Lock className="h-3 w-3" />
+                  Locked
+                </span>
+              )}
             </div>
 
             <dl className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -140,12 +153,25 @@ export default function TaskDetailPage({
             )}
           </section>
 
-          {/* Status control */}
-          <StatusControl
-            taskId={id}
-            currentStatus={task.status}
-            reload={load}
-          />
+          {/* Status control — hidden once the task is locked (terminal) */}
+          {task.locked ? (
+            <section className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-800">
+              <Lock className="mt-0.5 h-5 w-5 shrink-0" />
+              <div>
+                <h2 className="text-sm font-semibold">Task locked</h2>
+                <p className="mt-1 text-sm">
+                  This task was completed and locked because its payment was
+                  approved. It can no longer be reopened, edited, or deleted.
+                </p>
+              </div>
+            </section>
+          ) : (
+            <StatusControl
+              taskId={id}
+              currentStatus={task.status}
+              reload={load}
+            />
+          )}
 
           {/* Comments */}
           <Comments

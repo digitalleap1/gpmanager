@@ -1046,6 +1046,7 @@ export interface TaskListItem {
   assigned_to: UserRef | null;
   priority: string;
   status: string;
+  locked: boolean;
   due_date: string | null;
   completed_at: string | null;
   created_at: string;

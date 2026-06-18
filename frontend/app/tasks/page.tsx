@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -339,37 +339,59 @@ export default function TasksPage() {
                         {formatDate(t.due_date)}
                       </td>
                       <td className="px-4 py-3">
-                        <TaskStatusBadge status={t.status} />
+                        <div className="flex items-center gap-1.5">
+                          <TaskStatusBadge status={t.status} />
+                          {t.locked && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+                              title="Locked — its payment was approved"
+                            >
+                              <Lock className="h-3 w-3" />
+                              Locked
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          {t.status !== "completed" && (
-                            <button
-                              type="button"
-                              onClick={() => handleComplete(t)}
-                              disabled={busyId === t.id}
-                              className="rounded-md p-1.5 text-muted-foreground hover:bg-green-100 hover:text-green-700 disabled:opacity-50"
-                              title="Mark complete"
+                          {t.locked ? (
+                            <span
+                              className="rounded-md p-1.5 text-muted-foreground/60"
+                              title="Locked — its payment was approved"
                             >
-                              <Check className="h-4 w-4" />
-                            </button>
+                              <Lock className="h-4 w-4" />
+                            </span>
+                          ) : (
+                            <>
+                              {t.status !== "completed" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleComplete(t)}
+                                  disabled={busyId === t.id}
+                                  className="rounded-md p-1.5 text-muted-foreground hover:bg-green-100 hover:text-green-700 disabled:opacity-50"
+                                  title="Mark complete"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </button>
+                              )}
+                              <Link
+                                href={`/tasks/${t.id}/edit`}
+                                className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(t)}
+                                disabled={busyId === t.id}
+                                className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
                           )}
-                          <Link
-                            href={`/tasks/${t.id}/edit`}
-                            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(t)}
-                            disabled={busyId === t.id}
-                            className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
                         </div>
                       </td>
                     </tr>
