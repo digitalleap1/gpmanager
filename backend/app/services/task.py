@@ -103,6 +103,8 @@ class TaskService:
 
     def update(self, task_id: uuid.UUID, data: TaskUpdate) -> Task:
         t = self.get(task_id)
+        if t.locked:
+            raise PermissionDenied("This task is locked (its payment was approved).")
         if not self._can_edit(t):
             raise PermissionDenied()
         changes = data.model_dump(exclude_unset=True)
@@ -133,6 +135,8 @@ class TaskService:
 
     def complete(self, task_id: uuid.UUID) -> Task:
         t = self.get(task_id)
+        if t.locked:
+            return t  # already terminal — nothing to do
         if not self._can_edit(t):
             raise PermissionDenied()
         if t.status != "completed":
@@ -198,6 +202,8 @@ class TaskService:
         if not is_manager(self.user):
             raise PermissionDenied("Only managers can delete tasks")
         t = self.get(task_id)
+        if t.locked:
+            raise PermissionDenied("This task is locked (its payment was approved).")
         self.activity.record(
             company_id=self.company_id,
             user_id=self.user.id,

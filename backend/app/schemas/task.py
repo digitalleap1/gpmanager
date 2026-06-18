@@ -95,6 +95,7 @@ class TaskListItem(BaseModel):
     assigned_to: UserRef | None
     priority: str
     status: str
+    locked: bool
     due_date: date | None
     completed_at: datetime | None
     created_at: datetime
@@ -115,6 +116,7 @@ class TaskListItem(BaseModel):
             ),
             priority=t.priority,
             status=t.status,
+            locked=t.locked,
             due_date=t.due_date,
             completed_at=t.completed_at,
             created_at=t.created_at,

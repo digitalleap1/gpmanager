@@ -264,6 +264,11 @@ class PaymentService:
             outcome = "cancelled" if p.payment_case == "reversal" else "paid"
             if p.status != outcome:
                 self._apply_status(p, outcome, note or f"verified ({p.payment_case})")
+            # Approved => the payer's task is done and locked (terminal).
+            set_source_task_status(
+                self.db, self.company_id, source_type=SOURCE_PAYMENT,
+                source_id=p.id, status="completed", lock=True,
+            )
         else:
             p.request_stage = "returned"
             # Reopen the payer's task so they can fix + resubmit.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, Uuid, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -27,6 +27,9 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     priority: Mapped[str] = mapped_column(String(20), default="medium", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    # Locked tasks are terminal — they can't be reopened, edited, or deleted.
+    # Set when the source workflow is finalised (e.g. a payment is approved).
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     due_date: Mapped[date | None] = mapped_column(Date)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

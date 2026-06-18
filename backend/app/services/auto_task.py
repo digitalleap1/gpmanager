@@ -103,10 +103,12 @@ def set_source_task_status(
     source_type: str,
     source_id: uuid.UUID,
     status: str,
+    lock: bool = False,
 ) -> Task | None:
     """Flip the mirrored task's status (e.g. complete it when the payer pays, or
-    reopen it to 'pending' when a payment is sent back). No-op if absent.
-    Caller commits."""
+    reopen it to 'pending' when a payment is sent back). ``lock=True`` makes the
+    task terminal (no reopening/editing) — used when a payment is approved.
+    No-op if absent. Caller commits."""
     from datetime import UTC, datetime
 
     task = db.scalar(
@@ -120,6 +122,8 @@ def set_source_task_status(
         return None
     task.status = status
     task.completed_at = datetime.now(UTC) if status == "completed" else None
+    if lock:
+        task.locked = True
     db.flush()
     return task
 
