@@ -23,6 +23,7 @@ from app.services.notification import Notifier
 # Source kinds an auto-task can originate from.
 SOURCE_GUEST_POST = "guest_post"
 SOURCE_PAYMENT = "payment"
+SOURCE_BUDGET_PERIOD = "budget_period"
 
 
 def sync_assignment_task(

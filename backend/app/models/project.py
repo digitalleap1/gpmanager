@@ -56,6 +56,9 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     budget_period: Mapped[str] = mapped_column(String(10), default="monthly", nullable=False)
     budget_start_date: Mapped[date | None] = mapped_column(Date)
     budget_end_date: Mapped[date | None] = mapped_column(Date)
+    # When on, each new budget period auto-takes the base amount + pushes a
+    # recurring "budget" task to the assignee; off => set each period manually.
+    budget_auto_renew: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     cost_per_link_target: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     target_links: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     goal: Mapped[str | None] = mapped_column(Text)
@@ -93,6 +96,11 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     monthly_budgets: Mapped[list[ProjectMonthlyBudget]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
+    )
+    budget_periods: Mapped[list[ProjectBudgetPeriod]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        order_by="ProjectBudgetPeriod.start_date",
     )
 
 
@@ -148,6 +156,35 @@ class ProjectMonthlyBudget(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     spent_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
 
     project: Mapped[Project] = relationship(back_populates="monthly_budgets")
+
+
+class ProjectBudgetPeriod(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One budget cycle for a project (a calendar month or ISO week). Spent is
+    computed live from payments dated within the period; each period carries its
+    own recurring task for the assignee."""
+
+    __tablename__ = "project_budget_periods"
+    __table_args__ = (
+        UniqueConstraint("project_id", "start_date", name="uq_budget_period_start"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    period_type: Mapped[str] = mapped_column(String(10), nullable=False)  # monthly|weekly|daily
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    label: Mapped[str] = mapped_column(String(40), nullable=False)
+    budget_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)  # open|closed
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+
+    project: Mapped[Project] = relationship(back_populates="budget_periods")
+    task: Mapped[Task | None] = relationship(foreign_keys=[task_id], lazy="joined")  # noqa: F821
 
 
 class BudgetAdjustment(UUIDPrimaryKeyMixin, Base):

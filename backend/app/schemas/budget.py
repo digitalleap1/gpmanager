@@ -16,6 +16,7 @@ class BudgetSummary(BaseModel):
     project_name: str
     currency: str
     period: str
+    auto_renew: bool
     start_date: date | None
     end_date: date | None
     budget: float
@@ -37,6 +38,34 @@ class BudgetSetRequest(BaseModel):
     cost_per_link_target: float | None = Field(default=None, ge=0)
     start_date: date | None = None
     end_date: date | None = None
+    auto_renew: bool | None = None
+
+
+class BudgetPeriodRead(BaseModel):
+    id: uuid.UUID
+    label: str
+    period_type: str
+    start_date: date
+    end_date: date
+    is_current: bool
+    currency: str
+    budget: float
+    spent: float
+    pending: float
+    remaining: float
+    utilization_pct: float
+    status: str
+    task_id: uuid.UUID | None
+    task_status: str | None
+    assignee: UserRef | None
+
+
+class BudgetPeriodSet(BaseModel):
+    amount: float = Field(ge=0)
+
+
+class AutoRenewRequest(BaseModel):
+    auto_renew: bool
 
 
 class AdjustmentCreate(BaseModel):
