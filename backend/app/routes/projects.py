@@ -1,7 +1,7 @@
 """Project routes (Module 3) including monthly goals & budgets (Module 4)."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Path, Query, Response, UploadFile, status
@@ -31,6 +31,7 @@ from app.schemas.project import (
     ProjectDetail,
     ProjectListItem,
     ProjectOverview,
+    ProjectReport,
     ProjectUpdate,
     WebsiteUsedItem,
 )
@@ -170,6 +171,18 @@ def archive_project(
 @router.get("/{project_id}/overview", response_model=ProjectOverview)
 def project_overview(project_id: uuid.UUID, user: CurrentUser, db: DbSession) -> ProjectOverview:
     return ProjectOverview(**ProjectHubService(db, user).overview(project_id))
+
+
+@router.get("/{project_id}/report", response_model=ProjectReport)
+def project_report(
+    project_id: uuid.UUID,
+    user: CurrentUser,
+    db: DbSession,
+    start: date | None = None,
+    end: date | None = None,
+) -> ProjectReport:
+    """Period-scoped metrics (this month / week / custom / all-time)."""
+    return ProjectReport(**ProjectHubService(db, user).report(project_id, start, end))
 
 
 @router.get("/{project_id}/websites", response_model=list[WebsiteUsedItem])

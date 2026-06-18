@@ -168,6 +168,12 @@ class TaskService:
                     company_id=self.company_id, user_id=uid, type="task_completed",
                     title="Task completed", body=body, entity_type="task", entity_id=t.id,
                 )
+            # Budget cycle: finishing this period's task rolls the budget forward
+            # to the next period (same amount + a fresh task for the assignee).
+            if t.source_type == "budget_period" and t.source_id:
+                from app.services.budget import roll_forward_budget_period
+
+                roll_forward_budget_period(self.db, self.user, t.source_id)
             self.db.commit()
             self.db.refresh(t)
         return t

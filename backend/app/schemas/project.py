@@ -228,6 +228,33 @@ class ProjectOverview(BaseModel):
     tasks_completed: int
 
 
+class ProjectReport(BaseModel):
+    """Per-project metrics scoped to a date range (this month / week / custom /
+    all-time). Budget comes from the budget cycles; spend/links/tasks from
+    payments + guest posts dated in the range."""
+
+    start: date | None
+    end: date | None
+    period_label: str
+    currency: str
+    budget_assigned: float
+    budget_spent: float
+    budget_pending: float
+    budget_remaining: float
+    utilization_pct: float
+    links_added: int
+    links_published: int
+    links_pending: int
+    links_rejected: int
+    websites_used: int
+    payments_paid: float
+    payments_pending: float
+    payments_count: int
+    tasks_total: int
+    tasks_completed: int
+    cost_per_link: float | None
+
+
 class WebsiteUsedItem(BaseModel):
     website: str
     links: int

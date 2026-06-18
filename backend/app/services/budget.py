@@ -47,6 +47,78 @@ def _day_bounds(d: date) -> tuple[date, date, str]:
     return d, d, d.strftime("%d %b %Y")
 
 
+def _bounds(period_type: str, d: date) -> tuple[date, date, str]:
+    if period_type == "weekly":
+        return _week_bounds(d)
+    if period_type == "daily":
+        return _day_bounds(d)
+    return _month_bounds(d)
+
+
+def _next_start(period_type: str, start: date) -> date:
+    if period_type == "weekly":
+        return start + timedelta(days=7)
+    if period_type == "daily":
+        return start + timedelta(days=1)
+    return (start.replace(day=1) + timedelta(days=32)).replace(day=1)  # next month
+
+
+def roll_forward_budget_period(db: Session, actor: User, period_id: uuid.UUID) -> None:
+    """Completing a period's budget task closes that period and activates the
+    NEXT one with the SAME budget amount + a fresh task for the assignee. Not
+    manager-gated (the assignee triggers it by completing their task). Caller
+    commits."""
+    from app.models.project import Project
+    from app.services.auto_task import SOURCE_BUDGET_PERIOD, sync_assignment_task
+
+    period = db.get(ProjectBudgetPeriod, period_id)
+    if period is None:
+        return
+    period.status = "closed"
+    p = db.get(Project, period.project_id)
+    if p is None:
+        return
+    nxt = _next_start(period.period_type, period.start_date)
+    if p.budget_end_date and nxt > p.budget_end_date:
+        db.flush()
+        return  # budget run has ended
+    s, e, label = _bounds(period.period_type, nxt)
+    exists = db.scalar(
+        select(ProjectBudgetPeriod).where(
+            ProjectBudgetPeriod.project_id == p.id, ProjectBudgetPeriod.start_date == s
+        )
+    )
+    if exists is None:
+        row = ProjectBudgetPeriod(
+            project_id=p.id,
+            company_id=p.company_id,
+            period_type=period.period_type,
+            start_date=s,
+            end_date=e,
+            label=label,
+            budget_amount=period.budget_amount,  # same budget rolls forward
+            currency=period.currency,
+            status="open",
+        )
+        db.add(row)
+        db.flush()
+        assignee = p.assignee_id or p.team_lead_id
+        if assignee:
+            task = sync_assignment_task(
+                db, actor, company_id=p.company_id,
+                source_type=SOURCE_BUDGET_PERIOD, source_id=row.id, assigned_to=assignee,
+                name=f"Budget — {p.name} · {label}"[:200],
+                description=(
+                    f"Manage the {label} budget "
+                    f"({row.currency} {row.budget_amount:g}) for {p.name}."
+                ),
+                project_id=p.id, due_date=e,
+            )
+            if task is not None:
+                row.task_id = task.id
+    db.flush()
+
+
 def _iter_periods(
     period_type: str, anchor: date, limit: date
 ) -> list[tuple[date, date, str]]:

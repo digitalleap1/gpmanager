@@ -6,14 +6,15 @@ ProjectService.get() first, so RBAC visibility (admin/lead/member) is enforced.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Date, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.activity import ActivityLog
 from app.models.guest_post import GuestPost
 from app.models.payment import Payment
-from app.models.project import Project, ProjectMonthlyBudget
+from app.models.project import Project, ProjectBudgetPeriod, ProjectMonthlyBudget
 from app.models.task import Task
 from app.models.user import User
 from app.services.project import ProjectService
@@ -104,6 +105,159 @@ class ProjectHubService:
             "tasks_total": tasks_total,
             "tasks_completed": tasks_completed,
             "budget_currency": p.budget_currency or "USD",
+        }
+
+    # ---- Period-scoped report (this month / week / custom / all-time) ----
+    def report(
+        self, project_id: uuid.UUID, start: date | None, end: date | None
+    ) -> dict:
+        """Accurate metrics scoped to a date range, sourced from the SAME data as
+        the rest of the app (budget cycles, payments by date, links, tasks) so
+        the Overview, Budget tab, and Payments always agree."""
+        p = self._project(project_id)
+        pid = p.id
+        cid = self.company_id
+
+        def _ranged(col, *extra) -> list:
+            conds = list(extra)
+            if start is not None:
+                conds.append(col >= start)
+            if end is not None:
+                conds.append(col <= end)
+            return conds
+
+        # Payments — bucket by payment_date, falling back to created date.
+        pay_bucket = func.coalesce(Payment.payment_date, cast(Payment.created_at, Date))
+        pay_base = (Payment.company_id == cid, Payment.project_id == pid, Payment.deleted_at.is_(None))
+
+        def _pay(status: str) -> float:
+            return float(
+                self.db.scalar(
+                    select(func.coalesce(func.sum(Payment.amount_usd), 0)).where(
+                        *pay_base, Payment.status == status, *_ranged(pay_bucket)
+                    )
+                ) or 0
+            )
+
+        paid = _pay("paid")
+        pending = _pay("pending")
+        pay_count = int(
+            self.db.scalar(
+                select(func.count()).select_from(Payment).where(*pay_base, *_ranged(pay_bucket))
+            ) or 0
+        )
+
+        # Links — added by created date; published by live-link date (fallback).
+        gp_created = cast(GuestPost.created_at, Date)
+        gp_pub = func.coalesce(GuestPost.live_link_date, cast(GuestPost.created_at, Date))
+        gp_base = (GuestPost.company_id == cid, GuestPost.project_id == pid, GuestPost.deleted_at.is_(None))
+        links_added = int(
+            self.db.scalar(select(func.count()).select_from(GuestPost).where(*gp_base, *_ranged(gp_created))) or 0
+        )
+        links_published = int(
+            self.db.scalar(
+                select(func.count()).select_from(GuestPost).where(
+                    *gp_base, GuestPost.status == "published", *_ranged(gp_pub)
+                )
+            ) or 0
+        )
+        links_rejected = int(
+            self.db.scalar(
+                select(func.count()).select_from(GuestPost).where(
+                    *gp_base,
+                    or_(GuestPost.status == "rejected", GuestPost.review_status == "rejected"),
+                    *_ranged(gp_created),
+                )
+            ) or 0
+        )
+        links_pending = max(links_added - links_published - links_rejected, 0)
+        websites_used = int(
+            self.db.scalar(
+                select(func.count(func.distinct(GuestPost.website_id))).where(
+                    *gp_base, GuestPost.website_id.is_not(None), *_ranged(gp_created)
+                )
+            ) or 0
+        )
+
+        # Budget — sum the cycles overlapping the range; fall back to the headline.
+        bp_overlap = []
+        if start is not None:
+            bp_overlap.append(ProjectBudgetPeriod.end_date >= start)
+        if end is not None:
+            bp_overlap.append(ProjectBudgetPeriod.start_date <= end)
+        period_count = int(
+            self.db.scalar(
+                select(func.count()).select_from(ProjectBudgetPeriod).where(
+                    ProjectBudgetPeriod.project_id == pid, *bp_overlap
+                )
+            ) or 0
+        )
+        if period_count:
+            budget_assigned = float(
+                self.db.scalar(
+                    select(func.coalesce(func.sum(ProjectBudgetPeriod.budget_amount), 0)).where(
+                        ProjectBudgetPeriod.project_id == pid, *bp_overlap
+                    )
+                ) or 0
+            )
+        else:
+            # No cycle overlaps this range. Fall back to the headline budget only
+            # for legacy projects that never used cycles at all; a project WITH
+            # cycles genuinely had no budget in a range with no period.
+            any_period = int(
+                self.db.scalar(
+                    select(func.count()).select_from(ProjectBudgetPeriod).where(
+                        ProjectBudgetPeriod.project_id == pid
+                    )
+                ) or 0
+            )
+            budget_assigned = float(p.monthly_budget or 0) if any_period == 0 else 0.0
+
+        # Tasks — created in range; completed by completion date (fallback created).
+        task_created = cast(Task.created_at, Date)
+        task_done = func.coalesce(cast(Task.completed_at, Date), cast(Task.created_at, Date))
+        task_base = (Task.company_id == cid, Task.project_id == pid)
+        tasks_total = int(
+            self.db.scalar(select(func.count()).select_from(Task).where(*task_base, *_ranged(task_created))) or 0
+        )
+        tasks_completed = int(
+            self.db.scalar(
+                select(func.count()).select_from(Task).where(
+                    *task_base, Task.status == "completed", *_ranged(task_done)
+                )
+            ) or 0
+        )
+
+        if start is None and end is None:
+            label = "All time"
+        elif start and end:
+            label = f"{start.isoformat()} → {end.isoformat()}"
+        elif start:
+            label = f"From {start.isoformat()}"
+        else:
+            label = f"Until {end.isoformat()}"
+
+        return {
+            "start": start,
+            "end": end,
+            "period_label": label,
+            "currency": p.budget_currency or "USD",
+            "budget_assigned": round(budget_assigned, 2),
+            "budget_spent": round(paid, 2),
+            "budget_pending": round(pending, 2),
+            "budget_remaining": round(budget_assigned - paid, 2),
+            "utilization_pct": round(paid / budget_assigned * 100, 1) if budget_assigned > 0 else 0.0,
+            "links_added": links_added,
+            "links_published": links_published,
+            "links_pending": links_pending,
+            "links_rejected": links_rejected,
+            "websites_used": websites_used,
+            "payments_paid": round(paid, 2),
+            "payments_pending": round(pending, 2),
+            "payments_count": pay_count,
+            "tasks_total": tasks_total,
+            "tasks_completed": tasks_completed,
+            "cost_per_link": round(paid / links_published, 2) if links_published else None,
         }
 
     # ---- Websites used in this project (derived from its guest posts) ----
