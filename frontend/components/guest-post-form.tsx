@@ -3,14 +3,19 @@
 import { useEffect, useState } from "react";
 
 import { guestPostStatusLabel } from "@/components/guest-post-status-badge";
+import { paymentStatusLabel } from "@/components/payment-status-badge";
 import type {
+  CurrencyRef,
   GuestPostCreate,
   GuestPostStatus,
+  PaymentStatus,
   ProjectListItem,
+  UserAdminRead,
   UserSummary,
 } from "@/lib/types";
-import { getUsers } from "@/services/lookup-service";
+import { getUsers, getCurrencies } from "@/services/lookup-service";
 import { listProjects } from "@/services/project-service";
+import { listUsers } from "@/services/user-service";
 
 const STATUS_OPTIONS: GuestPostStatus[] = [
   "prospect",
@@ -23,9 +28,36 @@ const STATUS_OPTIONS: GuestPostStatus[] = [
   "rejected",
 ];
 
+const PAYMENT_STATUS_OPTIONS: PaymentStatus[] = [
+  "pending",
+  "negotiation",
+  "paid",
+  "free",
+  "cancelled",
+  "rejected",
+];
+
+/**
+ * The optional inline payment collected alongside a guest-post link. Passed as
+ * the second argument to `onSubmit` ONLY when the "Also create a payment"
+ * checkbox is on — the page then creates a payment linked to the saved link.
+ */
+export interface GuestPostPaymentInput {
+  amount?: number;
+  currency: string;
+  mode_of_payment?: string;
+  transaction_id?: string;
+  status: string;
+  attributed_to_id?: string | null;
+  payment_date?: string | null;
+}
+
 interface GuestPostFormProps {
   initial?: Partial<GuestPostCreate>;
-  onSubmit: (values: GuestPostCreate) => void | Promise<void>;
+  onSubmit: (
+    values: GuestPostCreate,
+    payment?: GuestPostPaymentInput,
+  ) => void | Promise<void>;
   submitting: boolean;
   submitLabel: string;
   error?: string | null;
@@ -76,36 +108,50 @@ export function GuestPostForm({
   const [anchorText, setAnchorText] = useState(initial?.anchor_text ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
 
+  // Inline payment section (optional). Off by default; when on it reveals the
+  // payment fields and passes a `GuestPostPaymentInput` on submit.
+  const [payEnabled, setPayEnabled] = useState(false);
+  const [payAmount, setPayAmount] = useState("");
+  const [payCurrency, setPayCurrency] = useState("USD");
+  const [payMode, setPayMode] = useState("");
+  const [payTransactionId, setPayTransactionId] = useState("");
+  const [payStatus, setPayStatus] = useState<string>("pending");
+  const [payAttributedToId, setPayAttributedToId] = useState("");
+  const [payDate, setPayDate] = useState("");
+
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [users, setUsers] = useState<UserSummary[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
+  const [payUsers, setPayUsers] = useState<UserAdminRead[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      try {
-        // `getUsers` already tolerates a 403 → []; resolve projects + users
-        // independently so one failure does not blank the other picker.
-        const [projectsRes, usersRes] = await Promise.allSettled([
+      // `getUsers` already tolerates a 403 → []; resolve every picker
+      // independently so one failure does not blank the others. Currencies +
+      // payment users power the inline payment section and are non-fatal.
+      const [projectsRes, usersRes, currenciesRes, payUsersRes] =
+        await Promise.allSettled([
           listProjects({ page: 1, page_size: 200, sort: "name" }),
           getUsers(),
+          getCurrencies(),
+          listUsers(),
         ]);
-        if (!active) return;
-        if (projectsRes.status === "fulfilled") {
-          setProjects(projectsRes.value.items);
-        } else {
-          setLookupError(
-            "Projects could not load. Some pickers may be empty.",
-          );
-        }
-        if (usersRes.status === "fulfilled") {
-          setUsers(usersRes.value);
-        }
-      } catch {
-        if (active)
-          setLookupError(
-            "Some pickers could not load. You can still fill the other fields.",
-          );
+      if (!active) return;
+      if (projectsRes.status === "fulfilled") {
+        setProjects(projectsRes.value.items);
+      } else {
+        setLookupError("Projects could not load. Some pickers may be empty.");
+      }
+      if (usersRes.status === "fulfilled") {
+        setUsers(usersRes.value);
+      }
+      if (currenciesRes.status === "fulfilled") {
+        setCurrencies(currenciesRes.value);
+      }
+      if (payUsersRes.status === "fulfilled") {
+        setPayUsers(payUsersRes.value);
       }
     })();
     return () => {
@@ -132,7 +178,27 @@ export function GuestPostForm({
       anchor_text: anchorText.trim() || null,
       notes: notes.trim() || null,
     };
-    void onSubmit(values);
+
+    if (!payEnabled) {
+      // Checkbox off → behave exactly as before (no payment created).
+      void onSubmit(values);
+      return;
+    }
+
+    // Default the amount to the link's price when the field is left blank.
+    const amountRaw = payAmount.trim() !== "" ? payAmount : price;
+    const amountNum = amountRaw.trim() === "" ? undefined : Number(amountRaw);
+    const payment: GuestPostPaymentInput = {
+      amount:
+        amountNum != null && Number.isFinite(amountNum) ? amountNum : undefined,
+      currency: payCurrency,
+      mode_of_payment: payMode.trim() || undefined,
+      transaction_id: payTransactionId.trim() || undefined,
+      status: payStatus,
+      attributed_to_id: payAttributedToId || null,
+      payment_date: payDate || null,
+    };
+    void onSubmit(values, payment);
   }
 
   return (
@@ -368,6 +434,142 @@ export function GuestPostForm({
           onChange={(e) => setNotes(e.target.value)}
           className={inputClass}
         />
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-border bg-background p-5">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={payEnabled}
+            onChange={(e) => setPayEnabled(e.target.checked)}
+            className="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-ring"
+          />
+          <span className="text-sm font-semibold text-[#1A1F4D]">
+            Also create a payment for this link
+          </span>
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Records a payment against this link + project, attributed to the chosen
+          person. It will appear on the Payments page and ledger.
+        </p>
+
+        {payEnabled && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label htmlFor="pay_amount" className={labelClass}>
+                Amount
+              </label>
+              <input
+                id="pay_amount"
+                type="number"
+                min={0}
+                step="0.01"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                placeholder={price || "0.00"}
+                className={inputClass}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="pay_currency" className={labelClass}>
+                Currency
+              </label>
+              <select
+                id="pay_currency"
+                value={payCurrency}
+                onChange={(e) => setPayCurrency(e.target.value)}
+                className={inputClass}
+              >
+                {currencies.length === 0 && (
+                  <option value={payCurrency}>{payCurrency}</option>
+                )}
+                {currencies.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.name} ({c.symbol})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="pay_mode" className={labelClass}>
+                Mode of payment
+              </label>
+              <input
+                id="pay_mode"
+                type="text"
+                value={payMode}
+                onChange={(e) => setPayMode(e.target.value)}
+                placeholder="PayPal / Payoneer / Stripe / Client-direct / Free"
+                className={inputClass}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="pay_transaction_id" className={labelClass}>
+                Transaction ID
+              </label>
+              <input
+                id="pay_transaction_id"
+                type="text"
+                value={payTransactionId}
+                onChange={(e) => setPayTransactionId(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="pay_status" className={labelClass}>
+                Status
+              </label>
+              <select
+                id="pay_status"
+                value={payStatus}
+                onChange={(e) => setPayStatus(e.target.value)}
+                className={inputClass}
+              >
+                {PAYMENT_STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {paymentStatusLabel(s)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="pay_attributed_to" className={labelClass}>
+                Assign to
+              </label>
+              <select
+                id="pay_attributed_to"
+                value={payAttributedToId}
+                onChange={(e) => setPayAttributedToId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">— None —</option>
+                {payUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="pay_date" className={labelClass}>
+                Payment date
+              </label>
+              <input
+                id="pay_date"
+                type="date"
+                value={payDate}
+                onChange={(e) => setPayDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {error && (

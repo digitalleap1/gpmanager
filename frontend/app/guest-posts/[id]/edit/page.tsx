@@ -5,13 +5,50 @@ import { useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { GuestPostForm } from "@/components/guest-post-form";
+import {
+  GuestPostForm,
+  type GuestPostPaymentInput,
+} from "@/components/guest-post-form";
 import { ApiError } from "@/lib/api";
-import type { GuestPostCreate, GuestPostDetail } from "@/lib/types";
+import type {
+  GuestPostCreate,
+  GuestPostDetail,
+  PaymentCreate,
+} from "@/lib/types";
 import {
   getGuestPost,
   updateGuestPost,
 } from "@/services/guest-post-service";
+import { createPayment } from "@/services/payment-service";
+
+/**
+ * Build a `PaymentCreate` body from the inline payment input, omitting
+ * empty/undefined optional fields (never send blank strings; numbers only when
+ * finite) so the backend sees a clean payload.
+ */
+function buildPaymentBody(
+  values: GuestPostCreate,
+  payment: GuestPostPaymentInput,
+  guestPostId: string,
+  liveLink: string | null,
+): PaymentCreate {
+  const body: PaymentCreate = {
+    project_id: values.project_id,
+    guest_post_id: guestPostId,
+    currency: payment.currency,
+    status: payment.status,
+  };
+  if (values.website_id) body.website_id = values.website_id;
+  if (payment.attributed_to_id)
+    body.attributed_to_id = payment.attributed_to_id;
+  if (typeof payment.amount === "number" && Number.isFinite(payment.amount))
+    body.amount = payment.amount;
+  if (payment.mode_of_payment) body.mode_of_payment = payment.mode_of_payment;
+  if (payment.transaction_id) body.transaction_id = payment.transaction_id;
+  if (payment.payment_date) body.payment_date = payment.payment_date;
+  if (liveLink) body.live_link = liveLink;
+  return body;
+}
 
 export default function EditGuestPostPage({
   params,
@@ -52,12 +89,18 @@ export default function EditGuestPostPage({
     };
   }, [id]);
 
-  async function handleSubmit(values: GuestPostCreate) {
+  async function handleSubmit(
+    values: GuestPostCreate,
+    payment?: GuestPostPaymentInput,
+  ) {
     setError(null);
     setSubmitting(true);
+
+    // 1) Save the link first. A failure here means nothing changed.
+    let updatedLiveLink: string | null;
     try {
-      await updateGuestPost(id, values);
-      router.push(`/guest-posts/${id}`);
+      const updated = await updateGuestPost(id, values);
+      updatedLiveLink = updated.live_link ?? null;
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -65,7 +108,30 @@ export default function EditGuestPostPage({
           : "Unable to save changes. Please try again.",
       );
       setSubmitting(false);
+      return;
     }
+
+    // 2) Optionally create the payment. If the link saved but the payment
+    // fails, do NOT lose the saved link — navigate to it but surface the
+    // payment error so it can be retried from the Payments page.
+    if (payment) {
+      try {
+        await createPayment(
+          buildPaymentBody(values, payment, id, updatedLiveLink),
+        );
+      } catch (err) {
+        setError(
+          err instanceof ApiError
+            ? `Link saved, but the payment failed: ${err.message}`
+            : "Link saved, but the payment could not be created.",
+        );
+        setSubmitting(false);
+        router.push(`/guest-posts/${id}`);
+        return;
+      }
+    }
+
+    router.push(`/guest-posts/${id}`);
   }
 
   const initial: Partial<GuestPostCreate> | undefined = guestPost
@@ -74,6 +140,7 @@ export default function EditGuestPostPage({
         website_id: guestPost.website_id,
         website_name: guestPost.website_name,
         da: guestPost.da,
+        pa: guestPost.pa,
         dr: guestPost.dr,
         traffic: guestPost.traffic,
         price: guestPost.price,

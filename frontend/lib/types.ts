@@ -806,6 +806,7 @@ export interface PaymentDetail extends PaymentListItem {
 export interface PaymentCreate {
   project_id?: string | null;
   website_id?: string | null;
+  guest_post_id?: string | null;
   live_link?: string | null;
   currency?: string;
   amount?: number | null;
