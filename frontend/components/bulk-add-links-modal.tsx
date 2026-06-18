@@ -17,11 +17,20 @@
 import { Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { WatcherMultiSelect } from "@/components/watcher-multi-select";
 import { ApiError } from "@/lib/api";
-import type { BulkLinkRow, BulkLinksResult, CurrencyRef } from "@/lib/types";
+import {
+  PAYMENT_CASES,
+  paymentCaseLabel,
+  type BulkLinkRow,
+  type BulkLinksResult,
+  type CurrencyRef,
+  type UserAdminRead,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { bulkCreateLinks } from "@/services/guest-post-service";
 import { getCurrencies } from "@/services/lookup-service";
+import { listUsers } from "@/services/user-service";
 
 /** Editable draft of a single row — every field is a string for input binding. */
 interface DraftRow {
@@ -34,9 +43,13 @@ interface DraftRow {
   currency: string;
   payment_mode: string;
   request_payment: boolean;
+  /** Payer assigned to this row's payment (only when `request_payment`). */
+  attributed_to_id: string;
+  /** Case for this row's payment (only when `request_payment`). */
+  payment_case: string;
 }
 
-/** A fresh, empty draft row (currency defaults to USD). */
+/** A fresh, empty draft row (currency defaults to USD, case to standard). */
 function emptyRow(): DraftRow {
   return {
     website_name: "",
@@ -48,6 +61,8 @@ function emptyRow(): DraftRow {
     currency: "USD",
     payment_mode: "",
     request_payment: false,
+    attributed_to_id: "",
+    payment_case: "standard",
   };
 }
 
@@ -88,24 +103,31 @@ export function BulkAddLinksModal({
     emptyRow(),
   ]);
   const [currencies, setCurrencies] = useState<CurrencyRef[]>([]);
+  const [users, setUsers] = useState<UserAdminRead[]>([]);
+  const [watcherIds, setWatcherIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load currencies for the compact per-row select.
+  // Load currencies (per-row select) + users (payer + CC pickers). Both non-fatal.
   useEffect(() => {
     let active = true;
     void (async () => {
-      try {
-        const list = await getCurrencies();
-        if (active) setCurrencies(list);
-      } catch {
-        // Non-fatal: fall back to the single USD option already shown.
-      }
+      const [currenciesRes, usersRes] = await Promise.allSettled([
+        getCurrencies(),
+        listUsers(),
+      ]);
+      if (!active) return;
+      if (currenciesRes.status === "fulfilled")
+        setCurrencies(currenciesRes.value);
+      if (usersRes.status === "fulfilled") setUsers(usersRes.value);
     })();
     return () => {
       active = false;
     };
   }, []);
+
+  // Any row currently requesting a payment? Controls the shared CC section.
+  const anyRequestingPayment = rows.some((r) => r.request_payment);
 
   // Close on Escape.
   useEffect(() => {
@@ -150,11 +172,16 @@ export function BulkAddLinksModal({
       currency: row.currency.trim() || undefined,
       payment_mode: row.payment_mode.trim() || undefined,
       request_payment: row.request_payment,
+      // Payer + case only matter when this row raises a payment.
+      attributed_to_id: row.request_payment
+        ? row.attributed_to_id || null
+        : null,
+      payment_case: row.request_payment ? row.payment_case : undefined,
     }));
 
     setSaving(true);
     try {
-      const result = await bulkCreateLinks(projectId, payload);
+      const result = await bulkCreateLinks(projectId, payload, watcherIds);
       onCreated(result);
     } catch (err) {
       setError(errMsg(err, "Unable to add the links. Please try again."));
@@ -219,6 +246,8 @@ export function BulkAddLinksModal({
                   <th className="px-3 py-2 font-medium">Price</th>
                   <th className="px-3 py-2 font-medium">Currency</th>
                   <th className="px-3 py-2 font-medium">Pay mode</th>
+                  <th className="px-3 py-2 font-medium">Payer</th>
+                  <th className="px-3 py-2 font-medium">Case</th>
                   <th className="px-3 py-2 text-center font-medium">
                     Request payment
                   </th>
@@ -334,6 +363,43 @@ export function BulkAddLinksModal({
                           className={cn(fieldCls, "min-w-[7rem]")}
                         />
                       </td>
+                      <td className="px-2 py-1.5">
+                        <select
+                          aria-label={`Payer, row ${index + 1}`}
+                          value={row.attributed_to_id}
+                          disabled={saving || !row.request_payment}
+                          onChange={(e) =>
+                            patchRow(index, {
+                              attributed_to_id: e.target.value,
+                            })
+                          }
+                          className={cn(fieldCls, "min-w-[8rem]")}
+                        >
+                          <option value="">— None —</option>
+                          {users.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <select
+                          aria-label={`Case, row ${index + 1}`}
+                          value={row.payment_case}
+                          disabled={saving || !row.request_payment}
+                          onChange={(e) =>
+                            patchRow(index, { payment_case: e.target.value })
+                          }
+                          className={cn(fieldCls, "min-w-[7rem]")}
+                        >
+                          {PAYMENT_CASES.map((c) => (
+                            <option key={c} value={c}>
+                              {paymentCaseLabel(c)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="px-2 py-1.5 text-center">
                         <input
                           type="checkbox"
@@ -379,6 +445,29 @@ export function BulkAddLinksModal({
             <Plus className="h-4 w-4" />
             Add row
           </button>
+
+          {anyRequestingPayment && (
+            <div className="mt-4 max-w-md space-y-1.5">
+              <label
+                htmlFor="bulk_watchers"
+                className="text-sm font-medium text-[#1A1F4D]"
+              >
+                CC watchers (for all payment requests)
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Pick up to 3 people to notify on every payment raised in this
+                batch.
+              </p>
+              <WatcherMultiSelect
+                id="bulk_watchers"
+                users={users}
+                value={watcherIds}
+                onChange={setWatcherIds}
+                max={3}
+                disabled={saving}
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">

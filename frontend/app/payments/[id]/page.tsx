@@ -13,6 +13,10 @@ import { use, useCallback, useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import {
+  PaymentCaseBadge,
+  RequestStageBadge,
+} from "@/components/payment-stage-badge";
+import {
   PaymentStatusBadge,
   paymentStatusLabel,
 } from "@/components/payment-status-badge";
@@ -29,6 +33,8 @@ import {
   addPaymentComment,
   getPayment,
   setStatus,
+  submitPayment,
+  verifyPayment,
 } from "@/services/payment-service";
 
 /** Build up-to-two-letter initials from a display name. */
@@ -80,6 +86,9 @@ export default function PaymentDetailPage({
     (user.is_superuser ||
       user.roles.includes("admin") ||
       user.roles.includes("team_lead"));
+  const isAdmin =
+    !!user && (user.is_superuser || user.roles.includes("admin"));
+  const meId = user?.id ?? null;
 
   const [payment, setPayment] = useState<PaymentDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -161,9 +170,11 @@ export default function PaymentDetailPage({
 
           {/* Overview */}
           <section className="rounded-lg border border-border bg-card p-6 text-card-foreground">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-semibold">{title}</h2>
               <PaymentStatusBadge status={payment.status} />
+              <PaymentCaseBadge value={payment.payment_case} />
+              <RequestStageBadge value={payment.request_stage} />
             </div>
 
             <dl className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -245,8 +256,20 @@ export default function PaymentDetailPage({
               />
               <Field label="Transaction ID" value={payment.transaction_id} />
               <Field
-                label="Attributed to"
+                label="Payer"
                 value={payment.attributed_to?.full_name ?? null}
+              />
+              <Field
+                label="Requested by"
+                value={payment.requested_by?.full_name ?? null}
+              />
+              <Field
+                label="CC watchers"
+                value={
+                  payment.watchers.length > 0
+                    ? payment.watchers.map((w) => w.full_name).join(", ")
+                    : null
+                }
               />
               <Field
                 label="Via"
@@ -304,6 +327,42 @@ export default function PaymentDetailPage({
               </div>
             )}
           </section>
+
+          {/* Assignment workflow: payer submits, requester verifies. */}
+          {(() => {
+            const isPayer =
+              meId != null && payment.attributed_to?.id === meId;
+            const isRequester =
+              meId != null && payment.requested_by?.id === meId;
+            const canSubmit =
+              (isPayer || isManager) &&
+              (payment.request_stage === "assigned" ||
+                payment.request_stage === "returned");
+            const canVerify =
+              (isRequester || isAdmin) &&
+              payment.request_stage === "submitted";
+            return (
+              <>
+                {canSubmit && (
+                  <SubmitPanel
+                    paymentId={id}
+                    defaultAmount={payment.amount}
+                    defaultCurrency={payment.currency}
+                    defaultMode={payment.mode_of_payment}
+                    defaultTransactionId={payment.transaction_id}
+                    reload={load}
+                  />
+                )}
+                {canVerify && (
+                  <VerifyPanel
+                    paymentId={id}
+                    paymentCase={payment.payment_case}
+                    reload={load}
+                  />
+                )}
+              </>
+            );
+          })()}
 
           {/* Request & clarification thread */}
           <RequestThread
@@ -448,6 +507,296 @@ function ManagerActions({
           {err}
         </p>
       )}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Submit panel — shown to the assigned payer (or a manager) while the request
+ * is `assigned` or `returned`. Records the transaction details and moves the
+ * payment to `submitted`, returning it to the requester to verify.
+ */
+function SubmitPanel({
+  paymentId,
+  defaultAmount,
+  defaultCurrency,
+  defaultMode,
+  defaultTransactionId,
+  reload,
+}: {
+  paymentId: string;
+  defaultAmount: number | null;
+  defaultCurrency: string;
+  defaultMode: string | null;
+  defaultTransactionId: string | null;
+  reload: () => Promise<void>;
+}) {
+  const [transactionId, setTransactionId] = useState(
+    defaultTransactionId ?? "",
+  );
+  const [mode, setMode] = useState(defaultMode ?? "");
+  const [amount, setAmount] = useState(
+    defaultAmount != null ? String(defaultAmount) : "",
+  );
+  const [currency, setCurrency] = useState(defaultCurrency);
+  const [paymentDate, setPaymentDate] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    setErr(null);
+    setBusy(true);
+    const amountNum = amount.trim() === "" ? undefined : Number(amount);
+    try {
+      await submitPayment(paymentId, {
+        transaction_id: transactionId.trim() || undefined,
+        mode_of_payment: mode.trim() || undefined,
+        amount:
+          amountNum != null && Number.isFinite(amountNum)
+            ? amountNum
+            : undefined,
+        currency: currency.trim() || undefined,
+        payment_date: paymentDate || null,
+        note: note.trim() || undefined,
+      });
+      await reload();
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 403
+          ? "You can't submit this payment."
+          : e instanceof ApiError
+            ? e.message
+            : "Unable to submit the payment.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const fieldCls =
+    "w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50";
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+      <h2 className="text-sm font-semibold text-[#1A1F4D]">Submit payment</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Record the transaction details. This returns the payment to the
+        requester to verify.
+      </p>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <label htmlFor="sub_txn" className="text-sm font-medium">
+            Transaction ID
+          </label>
+          <input
+            id="sub_txn"
+            type="text"
+            value={transactionId}
+            disabled={busy}
+            onChange={(e) => setTransactionId(e.target.value)}
+            className={fieldCls}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="sub_mode" className="text-sm font-medium">
+            Mode of payment
+          </label>
+          <input
+            id="sub_mode"
+            type="text"
+            value={mode}
+            disabled={busy}
+            onChange={(e) => setMode(e.target.value)}
+            placeholder="PayPal / Payoneer / Stripe…"
+            className={fieldCls}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="sub_amount" className="text-sm font-medium">
+            Amount
+          </label>
+          <input
+            id="sub_amount"
+            type="number"
+            min={0}
+            step="0.01"
+            value={amount}
+            disabled={busy}
+            onChange={(e) => setAmount(e.target.value)}
+            className={fieldCls}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="sub_currency" className="text-sm font-medium">
+            Currency
+          </label>
+          <input
+            id="sub_currency"
+            type="text"
+            value={currency}
+            disabled={busy}
+            onChange={(e) => setCurrency(e.target.value)}
+            className={fieldCls}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="sub_date" className="text-sm font-medium">
+            Payment date
+          </label>
+          <input
+            id="sub_date"
+            type="date"
+            value={paymentDate}
+            disabled={busy}
+            onChange={(e) => setPaymentDate(e.target.value)}
+            className={fieldCls}
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <label htmlFor="sub_note" className="text-sm font-medium">
+            Note (optional)
+          </label>
+          <textarea
+            id="sub_note"
+            rows={2}
+            value={note}
+            disabled={busy}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Add context for the requester…"
+            className={fieldCls}
+          />
+        </div>
+      </div>
+
+      {err && (
+        <p
+          role="alert"
+          className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {err}
+        </p>
+      )}
+
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => void handleSubmit()}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        >
+          <Send className="h-4 w-4" />
+          {busy ? "Submitting…" : "Submit payment"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Verify panel — shown to the requester (or an admin) while the request is
+ * `submitted`. Approve finalises the payment (→ paid, or cancelled for a
+ * reversal); Send back returns it to the payer (→ returned) with a note.
+ */
+function VerifyPanel({
+  paymentId,
+  paymentCase,
+  reload,
+}: {
+  paymentId: string;
+  paymentCase: string;
+  reload: () => Promise<void>;
+}) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function apply(approve: boolean) {
+    setErr(null);
+    setBusy(approve ? "approve" : "reject");
+    try {
+      await verifyPayment(paymentId, {
+        approve,
+        note: note.trim() || undefined,
+      });
+      setNote("");
+      await reload();
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 403
+          ? "You can't verify this payment."
+          : e instanceof ApiError
+            ? e.message
+            : "Unable to verify the payment.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const approveOutcome =
+    paymentCase === "reversal" ? "Cancelled" : "Paid";
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+      <h2 className="text-sm font-semibold text-[#1A1F4D]">Verify payment</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Approve to mark this payment{" "}
+        <span className="font-medium">{approveOutcome}</span>, or send it back to
+        the payer for changes.
+      </p>
+
+      <div className="mt-4 space-y-3">
+        <div className="space-y-1.5">
+          <label htmlFor="ver_note" className="text-sm font-medium">
+            Note (optional, recommended when sending back)
+          </label>
+          <textarea
+            id="ver_note"
+            rows={2}
+            value={note}
+            disabled={busy !== null}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What needs to change…"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          />
+        </div>
+
+        {err && (
+          <p
+            role="alert"
+            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {err}
+          </p>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void apply(true)}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            <Check className="h-4 w-4" />
+            {busy === "approve" ? "Approving…" : "Approve"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void apply(false)}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+            {busy === "reject" ? "Sending back…" : "Send back"}
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

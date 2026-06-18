@@ -18,6 +18,7 @@ import type {
   GuestPostStats,
   GuestPostUpdate,
   Page,
+  RequestLinkPaymentBody,
 } from "@/lib/types";
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -76,9 +77,16 @@ export function updateGuestPost(
 export function bulkCreateLinks(
   projectId: string,
   links: BulkLinkRow[],
+  watcherIds: string[] = [],
 ): Promise<BulkLinksResult> {
   const numericKeys = ["da", "pa", "dr", "traffic", "price"] as const;
-  const stringKeys = ["website_name", "link_url", "currency", "payment_mode"] as const;
+  const stringKeys = [
+    "website_name",
+    "link_url",
+    "currency",
+    "payment_mode",
+    "payment_case",
+  ] as const;
 
   const cleaned = links.map((row) => {
     const out: BulkLinkRow = {};
@@ -94,14 +102,22 @@ export function bulkCreateLinks(
         out[key] = value;
       }
     }
+    if (row.attributed_to_id) out.attributed_to_id = row.attributed_to_id;
     out.request_payment = row.request_payment === true;
     return out;
   });
 
-  return api.post<BulkLinksResult>("/guest-posts/bulk", {
+  const body: {
+    project_id: string;
+    links: BulkLinkRow[];
+    watcher_ids?: string[];
+  } = {
     project_id: projectId,
     links: cleaned,
-  });
+  };
+  if (watcherIds.length > 0) body.watcher_ids = watcherIds;
+
+  return api.post<BulkLinksResult>("/guest-posts/bulk", body);
 }
 
 /** Move a guest post to a new status, optionally recording a note. */
@@ -135,13 +151,20 @@ export function removeGuestPost(id: string): Promise<void> {
  */
 export function requestGuestPostPayment(
   id: string,
-  body: { amount?: number; currency?: string; note?: string } = {},
+  body: RequestLinkPaymentBody = {},
 ): Promise<{ payment_id: string; status: string }> {
-  const payload: Record<string, string | number> = {};
+  const payload: Record<string, string | number | string[]> = {};
   if (body.amount != null) payload.amount = body.amount;
   if (body.currency != null && body.currency !== "")
     payload.currency = body.currency;
   if (body.note != null && body.note !== "") payload.note = body.note;
+  if (body.attributed_to_id) payload.attributed_to_id = body.attributed_to_id;
+  if (body.payment_case != null && body.payment_case !== "")
+    payload.payment_case = body.payment_case;
+  if (body.mode_of_payment != null && body.mode_of_payment !== "")
+    payload.mode_of_payment = body.mode_of_payment;
+  if (body.watcher_ids != null && body.watcher_ids.length > 0)
+    payload.watcher_ids = body.watcher_ids;
   return api.post<{ payment_id: string; status: string }>(
     `/guest-posts/${id}/request-payment`,
     payload,

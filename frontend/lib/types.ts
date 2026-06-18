@@ -626,12 +626,42 @@ export interface BulkLinkRow {
   currency?: string;
   payment_mode?: string;
   request_payment?: boolean;
+  /** The payer this row's payment is assigned to (when `request_payment`). */
+  attributed_to_id?: string | null;
+  /** The kind of payment for this row's payment (when `request_payment`). */
+  payment_case?: string;
+}
+
+/**
+ * Body for `POST /guest-posts/bulk`. `watcher_ids` is a single CC list applied
+ * to every requested payment in the batch; omit when empty.
+ */
+export interface BulkLinksCreate {
+  project_id: string;
+  links: BulkLinkRow[];
+  watcher_ids?: string[];
 }
 
 /** Result envelope returned by `POST /guest-posts/bulk`. */
 export interface BulkLinksResult {
   created: number;
   payments_requested: number;
+}
+
+/**
+ * Body for `POST /guest-posts/{id}/request-payment`. Defaults the amount to the
+ * link's price server-side when omitted. The assignment fields (`attributed_to_id`,
+ * `payment_case`, `mode_of_payment`, `watcher_ids`) are all optional — omit when
+ * unset so the request behaves as before.
+ */
+export interface RequestLinkPaymentBody {
+  amount?: number;
+  currency?: string;
+  note?: string;
+  attributed_to_id?: string | null;
+  payment_case?: string;
+  mode_of_payment?: string;
+  watcher_ids?: string[];
 }
 
 /** Filter/query params accepted by `GET /guest-posts`. */
@@ -753,6 +783,56 @@ export type PaymentStatus =
   | "cancelled"
   | "rejected";
 
+/* --- Payment assignment workflow (case + request stage) --- */
+
+/** The kind of payment a request represents. */
+export const PAYMENT_CASES = [
+  "standard",
+  "advance",
+  "reversal",
+  "other",
+] as const;
+export type PaymentCase = (typeof PAYMENT_CASES)[number];
+
+const PAYMENT_CASE_LABELS: Record<string, string> = {
+  standard: "Standard",
+  advance: "Advance",
+  reversal: "Reversal",
+  other: "Other",
+};
+
+/** Human-friendly label for a payment case (e.g. `advance` → "Advance"). */
+export function paymentCaseLabel(value: string): string {
+  return (
+    PAYMENT_CASE_LABELS[value] ??
+    value.charAt(0).toUpperCase() + value.slice(1)
+  );
+}
+
+/** The stage an assigned payment moves through before it is finalised. */
+export const REQUEST_STAGES = [
+  "assigned",
+  "submitted",
+  "verified",
+  "returned",
+] as const;
+export type RequestStage = (typeof REQUEST_STAGES)[number];
+
+const REQUEST_STAGE_LABELS: Record<string, string> = {
+  assigned: "Assigned",
+  submitted: "Submitted for review",
+  verified: "Verified",
+  returned: "Sent back",
+};
+
+/** Human-friendly label for a request stage (e.g. `submitted` → "Submitted for review"). */
+export function requestStageLabel(value: string): string {
+  return (
+    REQUEST_STAGE_LABELS[value] ??
+    value.charAt(0).toUpperCase() + value.slice(1)
+  );
+}
+
 export interface PaymentListItem {
   id: string;
   project_id: string | null;
@@ -777,6 +857,14 @@ export interface PaymentListItem {
   attributed_to: UserRef | null;
   via: string | null;
   invoice_number: string | null;
+  /** The kind of payment (Standard / Advance / Reversal / Other). */
+  payment_case: string;
+  /** Assignment-workflow stage, or null when the payment is not assigned. */
+  request_stage: string | null;
+  /** The person who raised the request (returns here for verification). */
+  requested_by: UserRef | null;
+  /** CC watchers — notified only, never the responsible payer. */
+  watchers: UserRef[];
   created_at: string;
   updated_at: string;
 }
@@ -824,10 +912,30 @@ export interface PaymentCreate {
   attributed_to_id?: string | null;
   via?: string | null;
   invoice_number?: string | null;
+  /** The kind of payment; defaults to "standard" server-side when omitted. */
+  payment_case?: string;
+  /** CC watchers (user ids) — notified only. Omit when empty. */
+  watcher_ids?: string[];
 }
 
 /** Partial body for `PATCH /payments/{id}`. */
 export type PaymentUpdate = Partial<PaymentCreate>;
+
+/** Body for `POST /payments/{id}/submit` — the payer records the transaction. */
+export interface PaymentSubmitBody {
+  transaction_id?: string;
+  mode_of_payment?: string;
+  amount?: number;
+  currency?: string;
+  payment_date?: string | null;
+  note?: string;
+}
+
+/** Body for `POST /payments/{id}/verify` — the requester approves or sends back. */
+export interface PaymentVerifyBody {
+  approve: boolean;
+  note?: string;
+}
 
 /** Filter/query params accepted by `GET /payments`. */
 export interface PaymentListParams {

@@ -4,14 +4,17 @@ import { useEffect, useState } from "react";
 
 import { guestPostStatusLabel } from "@/components/guest-post-status-badge";
 import { paymentStatusLabel } from "@/components/payment-status-badge";
-import type {
-  CurrencyRef,
-  GuestPostCreate,
-  GuestPostStatus,
-  PaymentStatus,
-  ProjectListItem,
-  UserAdminRead,
-  UserSummary,
+import { WatcherMultiSelect } from "@/components/watcher-multi-select";
+import {
+  PAYMENT_CASES,
+  paymentCaseLabel,
+  type CurrencyRef,
+  type GuestPostCreate,
+  type GuestPostStatus,
+  type PaymentStatus,
+  type ProjectListItem,
+  type UserAdminRead,
+  type UserSummary,
 } from "@/lib/types";
 import { getUsers, getCurrencies } from "@/services/lookup-service";
 import { listProjects } from "@/services/project-service";
@@ -50,6 +53,10 @@ export interface GuestPostPaymentInput {
   status: string;
   attributed_to_id?: string | null;
   payment_date?: string | null;
+  /** The kind of payment (Standard / Advance / Reversal / Other). */
+  payment_case: string;
+  /** CC watchers (user ids) — notified only. May be empty. */
+  watcher_ids: string[];
 }
 
 interface GuestPostFormProps {
@@ -118,6 +125,8 @@ export function GuestPostForm({
   const [payStatus, setPayStatus] = useState<string>("pending");
   const [payAttributedToId, setPayAttributedToId] = useState("");
   const [payDate, setPayDate] = useState("");
+  const [payCase, setPayCase] = useState<string>("standard");
+  const [payWatcherIds, setPayWatcherIds] = useState<string[]>([]);
 
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [users, setUsers] = useState<UserSummary[]>([]);
@@ -197,6 +206,9 @@ export function GuestPostForm({
       status: payStatus,
       attributed_to_id: payAttributedToId || null,
       payment_date: payDate || null,
+      payment_case: payCase,
+      // Never let the chosen payer also be a CC watcher.
+      watcher_ids: payWatcherIds.filter((wid) => wid !== payAttributedToId),
     };
     void onSubmit(values, payment);
   }
@@ -538,6 +550,24 @@ export function GuestPostForm({
             </div>
 
             <div className="space-y-1.5">
+              <label htmlFor="pay_case" className={labelClass}>
+                Case
+              </label>
+              <select
+                id="pay_case"
+                value={payCase}
+                onChange={(e) => setPayCase(e.target.value)}
+                className={inputClass}
+              >
+                {PAYMENT_CASES.map((c) => (
+                  <option key={c} value={c}>
+                    {paymentCaseLabel(c)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
               <label htmlFor="pay_attributed_to" className={labelClass}>
                 Assign to
               </label>
@@ -566,6 +596,24 @@ export function GuestPostForm({
                 value={payDate}
                 onChange={(e) => setPayDate(e.target.value)}
                 className={inputClass}
+              />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <label htmlFor="pay_watchers" className={labelClass}>
+                CC watchers
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Pick up to 3 people to notify. The chosen payer can&apos;t also
+                be a watcher.
+              </p>
+              <WatcherMultiSelect
+                id="pay_watchers"
+                users={payUsers}
+                value={payWatcherIds}
+                onChange={setPayWatcherIds}
+                excludeId={payAttributedToId || null}
+                max={3}
               />
             </div>
           </div>

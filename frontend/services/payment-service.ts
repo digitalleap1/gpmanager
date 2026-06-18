@@ -17,7 +17,9 @@ import type {
   PaymentDetail,
   PaymentListItem,
   PaymentListParams,
+  PaymentSubmitBody,
   PaymentUpdate,
+  PaymentVerifyBody,
 } from "@/lib/types";
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -97,6 +99,32 @@ export function setStatus(
 
 export function removePayment(id: string): Promise<void> {
   return api.delete<void>(`/payments/${id}`);
+}
+
+/* --- Assignment workflow (submit → verify) --- */
+
+/**
+ * The assigned payer records the transaction details and moves the payment to
+ * the `submitted` stage, returning it to the requester to verify. Allowed for
+ * the payer, the requester, or a manager.
+ */
+export function submitPayment(
+  id: string,
+  body: PaymentSubmitBody,
+): Promise<PaymentListItem> {
+  return api.post<PaymentListItem>(`/payments/${id}/submit`, body);
+}
+
+/**
+ * The requester verifies a submitted payment: approve (→ `paid`, or `cancelled`
+ * for a reversal case) or send it back (→ `returned`). Allowed for the requester
+ * or an admin.
+ */
+export function verifyPayment(
+  id: string,
+  body: PaymentVerifyBody,
+): Promise<PaymentListItem> {
+  return api.post<PaymentListItem>(`/payments/${id}/verify`, body);
 }
 
 /* --- Request & clarification thread --- */

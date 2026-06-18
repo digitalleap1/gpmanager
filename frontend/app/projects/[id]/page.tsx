@@ -38,6 +38,7 @@ import {
   ReviewStatusBadge,
 } from "@/components/guest-post-status-badge";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
+import { RequestPaymentModal } from "@/components/request-payment-modal";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { TaskStatusBadge } from "@/components/task-status-badge";
@@ -58,10 +59,7 @@ import type {
   WebsiteUsedItem,
 } from "@/lib/types";
 import { formatDate, monthLabel, relativeTime } from "@/lib/utils";
-import {
-  listGuestPosts,
-  requestGuestPostPayment,
-} from "@/services/guest-post-service";
+import { listGuestPosts } from "@/services/guest-post-service";
 import { getUsers } from "@/services/lookup-service";
 import { listPayments } from "@/services/payment-service";
 import {
@@ -961,7 +959,10 @@ function LinksTab({ projectId }: { projectId: string }) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end">
-                        <RequestPaymentButton guestPostId={gp.id} />
+                        <RequestPaymentButton
+                          guestPostId={gp.id}
+                          price={gp.price}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -991,31 +992,19 @@ function LinksTab({ projectId }: { projectId: string }) {
 }
 
 /**
- * Per-row "Request payment" action: raises a pending payment for the link
- * (defaulting the amount to the link's own price) and shows a brief success
- * state. Surfaces a friendly message on a 403.
+ * Per-row "Request payment" action: opens a modal to collect the case, amount,
+ * currency, mode, payer, CC watchers, and an optional note, then raises a
+ * pending payment for the link and shows a brief success state.
  */
-function RequestPaymentButton({ guestPostId }: { guestPostId: string }) {
-  const [busy, setBusy] = useState(false);
+function RequestPaymentButton({
+  guestPostId,
+  price,
+}: {
+  guestPostId: string;
+  price: number | null;
+}) {
+  const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function handleRequest() {
-    setErr(null);
-    setBusy(true);
-    try {
-      await requestGuestPostPayment(guestPostId);
-      setDone(true);
-    } catch (e) {
-      setErr(
-        e instanceof ApiError && e.status === 403
-          ? "You can't request payment for this link."
-          : errMsg(e, "Unable to request payment for this link."),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
 
   if (done) {
     return (
@@ -1029,18 +1018,23 @@ function RequestPaymentButton({ guestPostId }: { guestPostId: string }) {
     <div className="flex flex-col items-end gap-1">
       <button
         type="button"
-        onClick={handleRequest}
-        disabled={busy}
+        onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary/40 hover:text-primary disabled:opacity-50"
         title="Request payment for this link"
       >
         <CreditCard className="h-3.5 w-3.5" />
-        {busy ? "Requesting…" : "Request payment"}
+        Request payment
       </button>
-      {err && (
-        <span role="alert" className="text-right text-xs text-destructive">
-          {err}
-        </span>
+      {open && (
+        <RequestPaymentModal
+          guestPostId={guestPostId}
+          defaultPrice={price}
+          onClose={() => setOpen(false)}
+          onRequested={() => {
+            setOpen(false);
+            setDone(true);
+          }}
+        />
       )}
     </div>
   );

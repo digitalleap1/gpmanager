@@ -7,6 +7,10 @@ import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { BulkBar, type FileFormat } from "@/components/bulk-bar";
 import {
+  PaymentCaseBadge,
+  RequestStageBadge,
+} from "@/components/payment-stage-badge";
+import {
   PaymentStatusBadge,
   paymentStatusLabel,
 } from "@/components/payment-status-badge";
@@ -469,7 +473,11 @@ export default function PaymentsPage() {
                       {p.transaction_id ?? "—"}
                     </td>
                     <td className="px-4 py-3">
-                      <PaymentStatusBadge status={p.status} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <PaymentStatusBadge status={p.status} />
+                        <PaymentCaseBadge value={p.payment_case} />
+                        <RequestStageBadge value={p.request_stage} />
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">

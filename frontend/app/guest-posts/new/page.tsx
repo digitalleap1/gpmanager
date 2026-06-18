@@ -39,6 +39,11 @@ function buildPaymentBody(
   if (payment.mode_of_payment) body.mode_of_payment = payment.mode_of_payment;
   if (payment.transaction_id) body.transaction_id = payment.transaction_id;
   if (payment.payment_date) body.payment_date = payment.payment_date;
+  // Default case is "standard" — only send it when it differs.
+  if (payment.payment_case && payment.payment_case !== "standard")
+    body.payment_case = payment.payment_case;
+  // Empty watcher lists send nothing.
+  if (payment.watcher_ids.length > 0) body.watcher_ids = payment.watcher_ids;
   if (liveLink) body.live_link = liveLink;
   return body;
 }
